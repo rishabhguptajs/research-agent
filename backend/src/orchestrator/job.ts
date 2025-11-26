@@ -11,12 +11,14 @@ import { isDBConnected } from '../services/db';
 import { User } from '../models/User';
 import { decrypt } from '../services/crypto';
 
+import { complete } from '../services/llm';
+
 export const jobEmitter = new EventEmitter();
 
 // In-memory cache for active jobs (for quick access during processing)
 const activeJobs: Record<string, JobStatus> = {};
 
-export async function createJob(query: string, userId: string): Promise<string> {
+export async function createJob(query: string, userId: string, parentJobId?: string, type: 'research' | 'chat' = 'research'): Promise<string> {
     const jobId = uuidv4();
     const timestamp = Date.now();
 
@@ -26,6 +28,8 @@ export async function createJob(query: string, userId: string): Promise<string> 
         query,
         createdAt: timestamp,
         status: 'planning',
+        parentJobId,
+        type,
         data: {}
     };
 
@@ -40,6 +44,8 @@ export async function createJob(query: string, userId: string): Promise<string> 
                 createdAt: timestamp,
                 updatedAt: timestamp,
                 status: 'planning',
+                parentJobId,
+                type,
                 data: {}
             });
         } catch (error) {
@@ -69,6 +75,8 @@ export async function getJob(id: string): Promise<JobStatus | null> {
                     query: job.query,
                     createdAt: job.createdAt,
                     status: job.status,
+                    parentJobId: job.parentJobId,
+                    type: job.type as 'research' | 'chat',
                     data: job.data || {}
                 };
             }
@@ -94,6 +102,8 @@ export async function getJobs(userId: string): Promise<JobStatus[]> {
                 query: job.query,
                 createdAt: job.createdAt,
                 status: job.status,
+                parentJobId: job.parentJobId,
+                type: job.type as 'research' | 'chat',
                 data: job.data || {}
             }));
         } catch (error) {
@@ -102,6 +112,21 @@ export async function getJobs(userId: string): Promise<JobStatus[]> {
     }
 
     return Object.values(activeJobs).filter(job => job.userId === userId);
+}
+
+export async function getJobThread(jobId: string): Promise<JobStatus[]> {
+    const thread: JobStatus[] = [];
+    let currentJobId: string | undefined = jobId;
+
+    while (currentJobId) {
+        const job: JobStatus | null = await getJob(currentJobId);
+        if (!job) break;
+
+        thread.unshift(job);
+        currentJobId = job.parentJobId;
+    }
+
+    return thread;
 }
 
 async function updateJobStatus(jobId: string, status: JobStatus['status'], dataUpdate?: Partial<JobStatus['data']>) {
@@ -147,6 +172,55 @@ async function processJob(jobId: string, query: string) {
 
         const openRouterApiKey = decrypt(user.encryptedOpenRouterKey);
         const tavilyApiKey = decrypt(user.encryptedTavilyKey);
+
+        if (job.type === 'chat') {
+            console.log(`[Job ${jobId}] Starting Chat...`);
+            await updateJobStatus(jobId, 'planning');
+            jobEmitter.emit('update', { jobId, status: 'planning', step: 'start' });
+
+            const thread = await getJobThread(jobId);
+            const contextJobs = thread.filter(j => j.jobId !== jobId);
+
+            const context = contextJobs.map(j => {
+                const role = j.userId === job.userId ? 'User' : 'Assistant';
+                let text = `User: ${j.query}\n`;
+                if (j.data.final?.detailed) {
+                    text += `Assistant: ${j.data.final.detailed}\n`;
+                } else if (j.data.final?.summary) {
+                    text += `Assistant: ${j.data.final.summary}\n`;
+                }
+                return text;
+            }).join('\n---\n');
+
+            const prompt = `You are a helpful research assistant.
+            
+Previous conversation context:
+${context}
+
+Current User Question: ${query}
+
+Please answer the user's question based on the context and your general knowledge. Keep it concise and helpful.`;
+
+            const response = await complete({
+                prompt,
+                apiKey: openRouterApiKey
+            });
+
+            const finalResult = {
+                summary: '',
+                detailed: response,
+                citations: []
+            };
+
+            job.data.final = finalResult;
+            await updateJobStatus(jobId, 'done', { final: finalResult });
+            jobEmitter.emit('update', { jobId, status: 'done', step: 'complete', data: job.data });
+
+            setTimeout(() => {
+                delete activeJobs[jobId];
+            }, 60000);
+            return;
+        }
 
         console.log(`[Job ${jobId}] Starting Planning...`);
         await updateJobStatus(jobId, 'planning');

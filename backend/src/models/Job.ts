@@ -6,6 +6,8 @@ export interface IJob extends Document {
     query: string;
     createdAt: number;
     updatedAt: number;
+    parentJobId?: string;
+    type?: 'research' | 'chat';
     status: 'planning' | 'searching' | 'extracting' | 'compiling' | 'done' | 'error';
     data: {
         plan?: {
@@ -46,6 +48,8 @@ const JobSchema = new Schema<IJob>({
     query: { type: String, required: true },
     createdAt: { type: Number, required: true, default: Date.now },
     updatedAt: { type: Number, required: true, default: Date.now },
+    parentJobId: { type: String, index: true },
+    type: { type: String, enum: ['research', 'chat'], default: 'research' },
     status: {
         type: String,
         required: true,
@@ -57,7 +61,7 @@ const JobSchema = new Schema<IJob>({
         default: {}
     }
 }, {
-    timestamps: false 
+    timestamps: false
 });
 
 JobSchema.index({ userId: 1, createdAt: -1 });
