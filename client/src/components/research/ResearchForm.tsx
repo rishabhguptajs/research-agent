@@ -13,7 +13,8 @@ import { useMobile } from "@/hooks/use-mobile";
 export default function ResearchForm() {
     const [query, setQuery] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [hasApiKey, setHasApiKey] = useState(false);
+    const [hasOpenRouterKey, setHasOpenRouterKey] = useState(false);
+    const [hasTavilyKey, setHasTavilyKey] = useState(false);
     const [checkingKey, setCheckingKey] = useState(true);
     const router = useRouter();
     const { getToken, isSignedIn } = useAuth();
@@ -27,15 +28,23 @@ export default function ResearchForm() {
 
             try {
                 const token = await getToken();
-                const response = await api.get("/user/key", {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                });
-                setHasApiKey(response.data.hasKey);
+
+                // Check both API keys
+                const [openRouterResponse, tavilyResponse] = await Promise.all([
+                    api.get("/user/key/openrouter", {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }),
+                    api.get("/user/key/tavily", {
+                        headers: { Authorization: `Bearer ${token}` },
+                    })
+                ]);
+
+                setHasOpenRouterKey(openRouterResponse.data.hasKey);
+                setHasTavilyKey(tavilyResponse.data.hasKey);
             } catch (error) {
-                console.error("Failed to check API key:", error);
-                setHasApiKey(false);
+                console.error("Failed to check API keys:", error);
+                setHasOpenRouterKey(false);
+                setHasTavilyKey(false);
             } finally {
                 setCheckingKey(false);
             }
@@ -55,7 +64,7 @@ export default function ResearchForm() {
             return;
         }
 
-        if (!hasApiKey) {
+        if (!hasOpenRouterKey || !hasTavilyKey) {
             router.push("/dashboard");
             return;
         }
@@ -100,12 +109,12 @@ export default function ResearchForm() {
                         onChange={(e) => setQuery(e.target.value)}
                         className={`border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/50 ${isMobile ? 'text-base h-10' : 'text-lg h-12'}`}
                         autoFocus
-                        disabled={isSignedIn && !hasApiKey && !checkingKey}
+                        disabled={isSignedIn && (!hasOpenRouterKey || !hasTavilyKey) && !checkingKey}
                     />
 
                     <Button
                         type="submit"
-                        disabled={isLoading || !query.trim() || (isSignedIn && !hasApiKey && !checkingKey)}
+                        disabled={isLoading || !query.trim() || (isSignedIn && (!hasOpenRouterKey || !hasTavilyKey) && !checkingKey)}
                         variant="premium"
                         className={`${isMobile ? 'ml-1 h-9 px-3' : 'ml-2 h-10 px-6'}`}
                     >
@@ -119,7 +128,7 @@ export default function ResearchForm() {
             </div>
 
             {/* Full-width glassmorphic status banner */}
-            {isSignedIn && !checkingKey && !hasApiKey && (
+            {isSignedIn && !checkingKey && (!hasOpenRouterKey || !hasTavilyKey) && (
                 <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -130,11 +139,15 @@ export default function ResearchForm() {
                         <div className="flex items-center gap-3">
                             <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
                             <span className={`font-mono text-amber-500/90 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                                API_KEY_NOT_CONFIGURED
+                                API_KEYS_NOT_CONFIGURED
                             </span>
                             {!isMobile && (
                                 <span className="text-xs text-muted-foreground">
-                                    Configure your OpenRouter API key to begin research
+                                    {!hasOpenRouterKey && !hasTavilyKey
+                                        ? "Configure your OpenRouter and Tavily API keys to begin research"
+                                        : !hasOpenRouterKey
+                                            ? "Configure your OpenRouter API key to continue"
+                                            : "Configure your Tavily API key to continue"}
                                 </span>
                             )}
                         </div>
