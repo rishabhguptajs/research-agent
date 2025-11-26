@@ -1,52 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth, useUser } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Clock, Search, User, Key, Mail, TrendingUp, FileText, CheckCircle2 } from "lucide-react";
-import api from "@/lib/api";
-import { JobStatus } from "@/types";
 import ApiKeyModal from "@/components/ApiKeyModal";
+import { useDashboard } from "@/hooks/useDashboard";
+import { JobCard } from "@/components/dashboard/JobCard";
 
 export default function Dashboard() {
-    const [jobs, setJobs] = useState<JobStatus[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const {
+        jobs,
+        isLoading,
+        isSettingsOpen,
+        setIsSettingsOpen,
+        isSignedIn,
+        isLoaded
+    } = useDashboard();
+
     const router = useRouter();
-    const { getToken, isSignedIn, isLoaded } = useAuth();
     const { user } = useUser();
-
-    useEffect(() => {
-        if (isLoaded && !isSignedIn) {
-            router.push("/");
-            return;
-        }
-
-        const fetchJobs = async () => {
-            if (!isSignedIn) return;
-
-            try {
-                const token = await getToken();
-
-                const response = await api.get('/jobs', {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                });
-
-                setJobs(response.data || []);
-            } catch (error) {
-                console.error("Failed to fetch jobs:", error);
-                setJobs([]);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchJobs();
-    }, [getToken, isSignedIn, isLoaded, router]);
 
     const completedJobs = jobs.filter(j => j.status === 'done').length;
     const activeJobs = jobs.filter(j => j.status !== 'done' && j.status !== 'error').length;
@@ -169,42 +143,7 @@ export default function Dashboard() {
                     </div>
                 ) : (
                     jobs.map((job) => (
-                        <Card
-                            key={job.jobId}
-                            className="cursor-pointer hover:border-primary/50 transition-all group hover:shadow-md"
-                            onClick={() => router.push(`/job/${job.jobId}`)}
-                        >
-                            <CardHeader>
-                                <div className="flex justify-between items-start mb-2">
-                                    <div className="flex-1">
-                                        <CardTitle className="text-sm font-semibold line-clamp-2 mb-1">
-                                            {job.query}
-                                        </CardTitle>
-                                        <CardDescription className="font-mono text-xs">
-                                            ID: {job.jobId.slice(0, 8)}
-                                        </CardDescription>
-                                    </div>
-                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ml-2 ${job.status === 'done' ? 'bg-green-500' :
-                                        job.status === 'error' ? 'bg-red-500' :
-                                            'bg-blue-500 animate-pulse'
-                                        }`} />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-2 text-muted-foreground">
-                                        <Clock className="w-3 h-3" />
-                                        <span>{new Date(job.createdAt).toLocaleDateString()} {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                    </div>
-                                    <span className={`font-mono uppercase text-xs px-2 py-0.5 rounded-sm ${job.status === 'done' ? 'bg-green-500/10 text-green-500' :
-                                        job.status === 'error' ? 'bg-red-500/10 text-red-500' :
-                                            'bg-blue-500/10 text-blue-500'
-                                        }`}>
-                                        {job.status}
-                                    </span>
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <JobCard key={job.jobId} job={job} />
                     ))
                 )}
             </div>

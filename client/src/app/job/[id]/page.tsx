@@ -4,49 +4,26 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useJobStream } from "@/hooks/useJobStream";
-import ReportView from "@/components/research/ReportView";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, Loader2, CheckCircle2, XCircle } from "lucide-react";
-import jsPDF from 'jspdf';
-import api from "@/lib/api";
-import { JobStatus } from "@/types";
+import { ArrowLeft, Loader2, XCircle } from "lucide-react";
+import { exportJobToPdf } from "@/utils/pdf-export";
+import { useJobThread } from "@/hooks/useJobThread";
+import { useFollowUp } from "@/hooks/useFollowUp";
+import { JobMessage } from "@/components/research/JobMessage";
 
 export default function JobPage() {
     const params = useParams();
     const router = useRouter();
     const jobId = params.id as string;
-    const { job: currentJob, error, isConnected } = useJobStream(jobId);
+    const { job: currentJob, error } = useJobStream(jobId);
     const { getToken } = useAuth();
     const { user } = useUser();
     const bottomRef = useRef<HTMLDivElement>(null);
-    const [followUpQuery, setFollowUpQuery] = useState("");
-    const [isSubmittingFollowUp, setIsSubmittingFollowUp] = useState(false);
-    const [thread, setThread] = useState<JobStatus[]>([]);
-    const [isLoadingThread, setIsLoadingThread] = useState(true);
+    const { thread, isLoadingThread } = useJobThread(jobId, getToken);
+    const { followUpQuery, setFollowUpQuery, isSubmittingFollowUp, submitFollowUp } = useFollowUp(jobId, getToken);
 
     const [isDeepResearch, setIsDeepResearch] = useState(true);
-
-    // Fetch thread history
-    useEffect(() => {
-        const fetchThread = async () => {
-            try {
-                const token = await getToken();
-                const response = await api.get(`/job/${jobId}/thread`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                setThread(response.data);
-            } catch (err) {
-                console.error('Failed to fetch thread:', err);
-            } finally {
-                setIsLoadingThread(false);
-            }
-        };
-
-        if (jobId) {
-            fetchThread();
-        }
-    }, [jobId, getToken]);
 
     // Scroll to bottom when new content arrives
     useEffect(() => {
@@ -55,294 +32,11 @@ export default function JobPage() {
         }
     }, [currentJob, thread.length]);
 
-    const handleFollowUpSubmit = async () => {
-        if (!followUpQuery.trim() || isSubmittingFollowUp) return;
-
-        setIsSubmittingFollowUp(true);
-        try {
-            const token = await getToken();
-            const response = await api.post(
-                '/job',
-                {
-                    query: followUpQuery.trim(),
-                    parentJobId: currentJob?.jobId || jobId,
-                    type: isDeepResearch ? 'research' : 'chat'
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
-
-            const { jobId: newJobId } = response.data;
-            router.push(`/job/${newJobId}`);
-        } catch (err) {
-            console.error('Follow-up submission error:', err);
-            alert('Failed to submit follow-up question. Please try again.');
-            setIsSubmittingFollowUp(false);
-        }
-    };
-
     const handleExportPDF = () => {
-        if (!currentJob || !currentJob.data.final) return;
-
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 20;
-        const contentWidth = pageWidth - (margin * 2);
-
-        let yPosition = margin;
-
-        pdf.setFillColor(37, 99, 235);
-        pdf.rect(0, 0, pageWidth, 40, 'F');
-
-        pdf.setFontSize(22);
-        pdf.setTextColor(255, 255, 255);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('Research Report', margin, 25);
-
-        pdf.setFontSize(10);
-        pdf.setTextColor(219, 234, 254);
-        pdf.setFont('helvetica', 'normal');
-        pdf.text(`Generated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`, margin, 32);
-
-        yPosition = 55;
-
-        pdf.setFontSize(12);
-        pdf.setTextColor(100, 116, 139);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('Research Query:', margin, yPosition);
-
-        pdf.setFontSize(12);
-        pdf.setTextColor(15, 23, 42);
-        pdf.setFont('helvetica', 'normal');
-        const queryLines = pdf.splitTextToSize(currentJob.query, contentWidth - 40);
-        pdf.text(queryLines, margin + 40, yPosition);
-        yPosition += (queryLines.length * 7) + 15;
-
-        pdf.setDrawColor(37, 99, 235);
-        pdf.setLineWidth(0.5);
-        pdf.setFillColor(239, 246, 255);
-
-        pdf.setFontSize(11);
-        pdf.setFont('helvetica', 'normal');
-        const summaryText = currentJob.data.final.summary.replace(/\[\d+\]/g, '');
-        const summaryLines = pdf.splitTextToSize(summaryText, contentWidth - 10);
-        const summaryHeight = (summaryLines.length * 6) + 25;
-
-        pdf.roundedRect(margin, yPosition, contentWidth, summaryHeight, 2, 2, 'FD');
-
-        pdf.setFontSize(12);
-        pdf.setTextColor(30, 58, 138);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('Executive Summary', margin + 5, yPosition + 10);
-
-        pdf.setFontSize(11);
-        pdf.setTextColor(51, 65, 85);
-        pdf.setFont('helvetica', 'normal');
-        pdf.text(summaryLines, margin + 5, yPosition + 20);
-
-        yPosition += summaryHeight + 20;
-
-        pdf.setFontSize(16);
-        pdf.setTextColor(30, 58, 138);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('Detailed Analysis', margin, yPosition);
-        yPosition += 10;
-
-        const detailedText = currentJob.data.final.detailed
-            .replace(/#{1,3}\s/g, '')
-            .replace(/\*\*(.*?)\*\*/g, '$1')
-            .replace(/\[\d+\]/g, '');
-
-        pdf.setFontSize(11);
-        pdf.setTextColor(15, 23, 42);
-        pdf.setFont('helvetica', 'normal');
-
-        const lines = pdf.splitTextToSize(detailedText, contentWidth);
-        const lineHeight = 7;
-
-        for (let i = 0; i < lines.length; i++) {
-            if (yPosition + lineHeight > pageHeight - margin) {
-                pdf.addPage();
-                yPosition = margin + 10; // Extra margin on new pages
-            }
-            pdf.text(lines[i], margin, yPosition);
-            yPosition += lineHeight;
-        }
-
-        // --- Sources Section ---
-        pdf.addPage();
-        yPosition = margin + 10;
-
-        pdf.setFontSize(16);
-        pdf.setTextColor(30, 58, 138); // Blue-900
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('Sources & References', margin, yPosition);
-        yPosition += 15;
-
-        currentJob.data.final.citations.forEach((citation, idx) => {
-            if (yPosition + 25 > pageHeight - margin) {
-                pdf.addPage();
-                yPosition = margin + 10;
-            }
-
-            // Citation Number Badge
-            pdf.setFillColor(219, 234, 254); // Blue-100
-            pdf.circle(margin + 4, yPosition - 1, 4, 'F');
-
-            pdf.setFontSize(9);
-            pdf.setTextColor(30, 58, 138); // Blue-900
-            pdf.setFont('helvetica', 'bold');
-            pdf.text(`${idx + 1}`, margin + 2.5, yPosition);
-
-            // URL
-            pdf.setFontSize(10);
-            pdf.setTextColor(37, 99, 235); // Blue-600
-            pdf.setFont('helvetica', 'normal');
-            const urlLines = pdf.splitTextToSize(citation.source, contentWidth - 20);
-            pdf.text(urlLines, margin + 15, yPosition);
-            yPosition += (urlLines.length * 5) + 2;
-
-            // Snippet
-            pdf.setFontSize(9);
-            pdf.setTextColor(100, 116, 139); // Slate-500
-            pdf.setFont('helvetica', 'italic');
-            const snippetLines = pdf.splitTextToSize(`"${citation.snippet}"`, contentWidth - 20);
-            pdf.text(snippetLines, margin + 15, yPosition);
-            yPosition += (snippetLines.length * 5) + 10; // Extra spacing between citations
-        });
-
-        // --- Footer ---
-        const totalPages = pdf.internal.pages.length - 1;
-        for (let i = 1; i <= totalPages; i++) {
-            pdf.setPage(i);
-
-            // Footer Line
-            pdf.setDrawColor(226, 232, 240); // Slate-200
-            pdf.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
-
-            pdf.setFontSize(8);
-            pdf.setTextColor(148, 163, 184); // Slate-400
-            pdf.setFont('helvetica', 'normal');
-            pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
-            pdf.text('Research Agent', pageWidth - margin, pageHeight - 8, { align: 'right' });
-        }
-
-        // Save
-        const fileName = `research-${currentJob.query.substring(0, 30).replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now()}.pdf`;
-        pdf.save(fileName);
-    };
-
-    const getStatusIcon = (status: string) => {
-        if (status === 'done') return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-        if (status === 'error') return <XCircle className="w-4 h-4 text-red-500" />;
-        return <Loader2 className="w-4 h-4 animate-spin text-primary" />;
-    };
-
-    const getStatusText = (job: JobStatus) => {
-        switch (job.status) {
-            case 'planning': return 'Analyzing your question and planning research strategy...';
-            case 'searching': return `Searching the web with ${job.data.plan?.search_queries?.length || 0} optimized queries...`;
-            case 'extracting': return `Extracting insights from ${job.data.search?.chunks?.length || 0} sources...`;
-            case 'compiling': return 'Compiling comprehensive research report...';
-            case 'done': return 'Research complete';
-            case 'error': return 'An error occurred during research';
-            default: return 'Processing...';
+        if (currentJob) {
+            exportJobToPdf(currentJob);
         }
     };
-
-    const renderJobMessage = (job: JobStatus, isLast: boolean) => (
-        <div key={job.jobId} className="contents">
-            {/* User Query */}
-            <div className="mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary overflow-hidden">
-                        {user?.imageUrl ? (
-                            <img src={user.imageUrl} alt={user.fullName || "User"} className="w-full h-full object-cover" />
-                        ) : (
-                            "U"
-                        )}
-                    </div>
-                    <div className="flex-1">
-                        <div className="bg-secondary/50 rounded-2xl rounded-tl-sm px-6 py-4">
-                            <p className="text-base text-foreground leading-relaxed">
-                                {job.query}
-                            </p>
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-2 ml-1">
-                            {new Date(job.createdAt).toLocaleString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            })}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Assistant Response */}
-            <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
-                <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-sm font-medium text-primary-foreground shadow-lg">
-                        AI
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        {/* Status Indicator */}
-                        {job.status !== 'done' && job.status !== 'error' && (
-                            <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
-                                {getStatusIcon(job.status)}
-                                <span>{getStatusText(job)}</span>
-                            </div>
-                        )}
-
-                        {/* Report Content */}
-                        {job.data.final ? (
-                            <ReportView data={job.data.final} />
-                        ) : (
-                            <div className="space-y-3">
-                                {/* Progress indicators as chat bubbles */}
-                                {job.data.plan && (
-                                    <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                            <span>Research plan created with {job.data.plan.search_queries?.length} search queries</span>
-                                        </div>
-                                    </div>
-                                )}
-                                {job.data.search && (
-                                    <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                            <span>Found {job.data.search.chunks?.length} relevant sources</span>
-                                        </div>
-                                    </div>
-                                )}
-                                {job.data.extraction && (
-                                    <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                            <span>Extracted {job.data.extraction.facts?.length} key insights</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Error state */}
-                        {job.status === 'error' && job.data.error && (
-                            <div className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
-                                {job.data.error}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
 
     if (error) {
         return (
@@ -369,14 +63,10 @@ export default function JobPage() {
     }
 
     // Combine historical thread with current live job
-    // If currentJob is available, replace the last item of thread with it (or append if not present)
-    // Actually, thread contains all jobs including current one (snapshot).
-    // We should use currentJob for the last item if IDs match.
     const displayJobs = [...thread];
     if (currentJob && displayJobs.length > 0 && displayJobs[displayJobs.length - 1].jobId === currentJob.jobId) {
         displayJobs[displayJobs.length - 1] = currentJob;
     } else if (currentJob) {
-        // Fallback or initial state where thread might not have caught up
         displayJobs.push(currentJob);
     }
 
@@ -432,7 +122,14 @@ export default function JobPage() {
 
             {/* Chat-like Content */}
             <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-32">
-                {displayJobs.map((job, index) => renderJobMessage(job, index === displayJobs.length - 1))}
+                {displayJobs.map((job, index) => (
+                    <JobMessage
+                        key={job.jobId}
+                        job={job}
+                        userImageUrl={user?.imageUrl}
+                        isLast={index === displayJobs.length - 1}
+                    />
+                ))}
 
                 {/* Auto-scroll anchor */}
                 <div ref={bottomRef} />
@@ -453,7 +150,7 @@ export default function JobPage() {
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
                                             e.preventDefault();
-                                            handleFollowUpSubmit();
+                                            submitFollowUp(currentJob?.jobId || jobId, isDeepResearch);
                                         }
                                     }}
                                     disabled={isSubmittingFollowUp}
@@ -464,7 +161,7 @@ export default function JobPage() {
                                 size="icon"
                                 className="rounded-xl h-11 w-11 flex-shrink-0 bg-primary hover:bg-primary/90"
                                 disabled={!followUpQuery.trim() || isSubmittingFollowUp}
-                                onClick={handleFollowUpSubmit}
+                                onClick={() => submitFollowUp(currentJob?.jobId || jobId, isDeepResearch)}
                             >
                                 {isSubmittingFollowUp ? (
                                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -485,8 +182,8 @@ export default function JobPage() {
                                 <button
                                     onClick={() => setIsDeepResearch(!isDeepResearch)}
                                     className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm ${isDeepResearch
-                                            ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                                            : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                                        ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
                                         }`}
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
