@@ -3,12 +3,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
-
-if (!TAVILY_API_KEY) {
-    console.warn('Warning: TAVILY_API_KEY is not set.');
-}
-
 export interface TavilyResult {
     title: string;
     url: string;
@@ -21,8 +15,10 @@ export interface TavilyResponse {
     results: TavilyResult[];
 }
 
-export async function search(query: string): Promise<TavilyResult[]> {
-    const apiKey = process.env.TAVILY_API_KEY;
+export async function search(query: string, apiKey: string): Promise<TavilyResult[]> {
+    if (!apiKey) {
+        throw new Error('Tavily API key is required');
+    }
 
     if (!query || query.trim() === '' || query === '...' || query.includes('...')) {
         console.error('[Tavily] Invalid query:', query);

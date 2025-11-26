@@ -3,7 +3,7 @@ import { chunkText } from '../services/chunk';
 import { createCollection, upsertChunks } from '../services/qdrant';
 import { SearchResult, Chunk } from '../types';
 
-export async function runSearcher(jobId: string, searchQueries: string[]): Promise<SearchResult> {
+export async function runSearcher(jobId: string, searchQueries: string[], tavilyApiKey: string): Promise<SearchResult> {
     const collectionName = `job_${jobId}`;
 
     await createCollection(collectionName);
@@ -17,7 +17,7 @@ export async function runSearcher(jobId: string, searchQueries: string[]): Promi
 
     console.log('[Search] Executing queries:', searchQueries);
 
-    const searchPromises = searchQueries.map(q => search(q));
+    const searchPromises = searchQueries.map(q => search(q, tavilyApiKey));
     const searchResultsArray = await Promise.all(searchPromises);
 
     const allSearchResults = searchResultsArray.flat();
