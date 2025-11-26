@@ -2,7 +2,7 @@ import { generateJSON } from '../services/llm';
 import { PlanResult } from '../types';
 import { PLANNER_PROMPT, PLANNER_SYSTEM } from '../prompts/planner';
 
-export async function runPlanner(query: string): Promise<PlanResult> {
+export async function runPlanner(query: string, apiKey: string): Promise<PlanResult> {
     const prompt = PLANNER_PROMPT(query);
 
     const schema = {
@@ -31,7 +31,8 @@ export async function runPlanner(query: string): Promise<PlanResult> {
         const plan = await generateJSON<PlanResult>({
             prompt,
             schema,
-            system: PLANNER_SYSTEM
+            system: PLANNER_SYSTEM,
+            apiKey
         });
 
         if (!plan.search_queries || plan.search_queries.length === 0) {

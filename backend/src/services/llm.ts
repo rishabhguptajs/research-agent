@@ -31,7 +31,16 @@ const googleApiKey = process.env.GOOGLE_API_KEY;
 const googleClient = new GoogleGenAI({ apiKey: googleApiKey });
 
 export async function generateJSON<T>(request: LLMRequest): Promise<T> {
-    const { prompt, schema, system } = request;
+    const { prompt, schema, system, apiKey } = request;
+
+    if (!apiKey) {
+        throw new Error('MISSING_API_KEY: User must provide an OpenRouter API key.');
+    }
+
+    const client = new OpenAI({
+        apiKey: apiKey,
+        baseURL: baseURL,
+    });
 
     const systemMessage = system || 'You are a helpful AI assistant. You must output valid JSON matching the schema provided.';
 
@@ -41,7 +50,7 @@ export async function generateJSON<T>(request: LLMRequest): Promise<T> {
         const completion = await client.chat.completions.create({
             model: model!,
             messages: [
-                { role: 'system', content: systemMessage + schemaDescription},
+                { role: 'system', content: systemMessage + schemaDescription },
                 { role: 'user', content: prompt }
             ],
             response_format: { type: 'json_object' },

@@ -8,6 +8,8 @@ import { runCompiler } from '../controllers/compile';
 import { dropCollection } from '../services/qdrant';
 import { Job, IJob } from '../models/Job';
 import { isDBConnected } from '../services/db';
+import { User } from '../models/User';
+import { decrypt } from '../services/crypto';
 
 export const jobEmitter = new EventEmitter();
 
@@ -134,11 +136,18 @@ async function processJob(jobId: string, query: string) {
     if (!job) return;
 
     try {
+        const user = await User.findOne({ userId: job.userId });
+        if (!user || !user.encryptedOpenRouterKey) {
+            throw new Error('MISSING_API_KEY: You must provide an OpenRouter API key in Settings to use this tool.');
+        }
+
+        const apiKey = decrypt(user.encryptedOpenRouterKey);
+
         console.log(`[Job ${jobId}] Starting Planning...`);
         await updateJobStatus(jobId, 'planning');
         jobEmitter.emit('update', { jobId, status: 'planning', step: 'start' });
 
-        const plan = await runPlanner(query);
+        const plan = await runPlanner(query, apiKey);
         job.data.plan = plan;
         await updateJobStatus(jobId, 'planning', { plan });
         jobEmitter.emit('update', { jobId, status: 'planning', step: 'complete', data: plan });
@@ -156,7 +165,7 @@ async function processJob(jobId: string, query: string) {
         await updateJobStatus(jobId, 'extracting');
         jobEmitter.emit('update', { jobId, status: 'extracting', step: 'start' });
 
-        const extractionResult = await runExtractor(plan.sub_questions, searchResult.collectionName);
+        const extractionResult = await runExtractor(plan.sub_questions, searchResult.collectionName, apiKey);
         job.data.extraction = extractionResult;
         await updateJobStatus(jobId, 'extracting', { extraction: extractionResult });
         jobEmitter.emit('update', { jobId, status: 'extracting', step: 'complete', data: extractionResult });
@@ -165,7 +174,7 @@ async function processJob(jobId: string, query: string) {
         await updateJobStatus(jobId, 'compiling');
         jobEmitter.emit('update', { jobId, status: 'compiling', step: 'start' });
 
-        const finalResult = await runCompiler(extractionResult);
+        const finalResult = await runCompiler(extractionResult, apiKey);
         job.data.final = finalResult;
         console.log('[Job] Final result stored:', {
             jobId,
