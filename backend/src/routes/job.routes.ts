@@ -6,7 +6,7 @@ const router = Router();
 
 // POST /job - Create a new research job
 router.post('/', async (req, res) => {
-    const { query } = req.body;
+    const { query, parentJobId, type } = req.body;
     const userId = (req as any).auth.userId;
 
     if (!query) {
@@ -17,7 +17,6 @@ router.post('/', async (req, res) => {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Check if user has both API keys configured
     try {
         const user = await User.findOne({ userId });
 
@@ -39,8 +38,25 @@ router.post('/', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error' });
     }
 
-    const jobId = await createJob(query, userId);
+    const jobId = await createJob(query, userId, parentJobId, type);
     res.status(201).json({ jobId });
+});
+
+// GET /job/:id/thread - Get the full conversation thread for a job
+router.get('/:id/thread', async (req, res) => {
+    const { id } = req.params;
+    const userId = (req as any).auth.userId;
+
+    const job = await getJob(id);
+    if (!job) {
+        return res.status(404).json({ error: 'Job not found' });
+    }
+    if (job.userId !== userId) {
+        return res.status(403).json({ error: 'Forbidden: You do not own this job' });
+    }
+
+    const thread = await import('../orchestrator/job').then(m => m.getJobThread(id));
+    res.json(thread);
 });
 
 // GET /jobs - Get all jobs for the authenticated user

@@ -2,30 +2,58 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { useJobStream } from "@/hooks/useJobStream";
 import ReportView from "@/components/research/ReportView";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import jsPDF from 'jspdf';
 import api from "@/lib/api";
+import { JobStatus } from "@/types";
 
 export default function JobPage() {
     const params = useParams();
     const router = useRouter();
     const jobId = params.id as string;
-    const { job, error, isConnected } = useJobStream(jobId);
+    const { job: currentJob, error, isConnected } = useJobStream(jobId);
     const { getToken } = useAuth();
+    const { user } = useUser();
     const bottomRef = useRef<HTMLDivElement>(null);
     const [followUpQuery, setFollowUpQuery] = useState("");
     const [isSubmittingFollowUp, setIsSubmittingFollowUp] = useState(false);
+    const [thread, setThread] = useState<JobStatus[]>([]);
+    const [isLoadingThread, setIsLoadingThread] = useState(true);
 
+    const [isDeepResearch, setIsDeepResearch] = useState(true);
+
+    // Fetch thread history
+    useEffect(() => {
+        const fetchThread = async () => {
+            try {
+                const token = await getToken();
+                const response = await api.get(`/job/${jobId}/thread`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setThread(response.data);
+            } catch (err) {
+                console.error('Failed to fetch thread:', err);
+            } finally {
+                setIsLoadingThread(false);
+            }
+        };
+
+        if (jobId) {
+            fetchThread();
+        }
+    }, [jobId, getToken]);
+
+    // Scroll to bottom when new content arrives
     useEffect(() => {
         if (bottomRef.current) {
             bottomRef.current.scrollIntoView({ behavior: "smooth" });
         }
-    }, [job]);
+    }, [currentJob, thread.length]);
 
     const handleFollowUpSubmit = async () => {
         if (!followUpQuery.trim() || isSubmittingFollowUp) return;
@@ -35,7 +63,11 @@ export default function JobPage() {
             const token = await getToken();
             const response = await api.post(
                 '/job',
-                { query: followUpQuery.trim() },
+                {
+                    query: followUpQuery.trim(),
+                    parentJobId: currentJob?.jobId || jobId,
+                    type: isDeepResearch ? 'research' : 'chat'
+                },
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -48,13 +80,12 @@ export default function JobPage() {
         } catch (err) {
             console.error('Follow-up submission error:', err);
             alert('Failed to submit follow-up question. Please try again.');
-        } finally {
             setIsSubmittingFollowUp(false);
         }
     };
 
     const handleExportPDF = () => {
-        if (!job || !job.data.final) return;
+        if (!currentJob || !currentJob.data.final) return;
 
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pageWidth = pdf.internal.pageSize.getWidth();
@@ -87,7 +118,7 @@ export default function JobPage() {
         pdf.setFontSize(12);
         pdf.setTextColor(15, 23, 42);
         pdf.setFont('helvetica', 'normal');
-        const queryLines = pdf.splitTextToSize(job.query, contentWidth - 40);
+        const queryLines = pdf.splitTextToSize(currentJob.query, contentWidth - 40);
         pdf.text(queryLines, margin + 40, yPosition);
         yPosition += (queryLines.length * 7) + 15;
 
@@ -97,7 +128,7 @@ export default function JobPage() {
 
         pdf.setFontSize(11);
         pdf.setFont('helvetica', 'normal');
-        const summaryText = job.data.final.summary.replace(/\[\d+\]/g, '');
+        const summaryText = currentJob.data.final.summary.replace(/\[\d+\]/g, '');
         const summaryLines = pdf.splitTextToSize(summaryText, contentWidth - 10);
         const summaryHeight = (summaryLines.length * 6) + 25;
 
@@ -121,7 +152,7 @@ export default function JobPage() {
         pdf.text('Detailed Analysis', margin, yPosition);
         yPosition += 10;
 
-        const detailedText = job.data.final.detailed
+        const detailedText = currentJob.data.final.detailed
             .replace(/#{1,3}\s/g, '')
             .replace(/\*\*(.*?)\*\*/g, '$1')
             .replace(/\[\d+\]/g, '');
@@ -152,7 +183,7 @@ export default function JobPage() {
         pdf.text('Sources & References', margin, yPosition);
         yPosition += 15;
 
-        job.data.final.citations.forEach((citation, idx) => {
+        currentJob.data.final.citations.forEach((citation, idx) => {
             if (yPosition + 25 > pageHeight - margin) {
                 pdf.addPage();
                 yPosition = margin + 10;
@@ -201,9 +232,117 @@ export default function JobPage() {
         }
 
         // Save
-        const fileName = `research-${job.query.substring(0, 30).replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now()}.pdf`;
+        const fileName = `research-${currentJob.query.substring(0, 30).replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now()}.pdf`;
         pdf.save(fileName);
     };
+
+    const getStatusIcon = (status: string) => {
+        if (status === 'done') return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+        if (status === 'error') return <XCircle className="w-4 h-4 text-red-500" />;
+        return <Loader2 className="w-4 h-4 animate-spin text-primary" />;
+    };
+
+    const getStatusText = (job: JobStatus) => {
+        switch (job.status) {
+            case 'planning': return 'Analyzing your question and planning research strategy...';
+            case 'searching': return `Searching the web with ${job.data.plan?.search_queries?.length || 0} optimized queries...`;
+            case 'extracting': return `Extracting insights from ${job.data.search?.chunks?.length || 0} sources...`;
+            case 'compiling': return 'Compiling comprehensive research report...';
+            case 'done': return 'Research complete';
+            case 'error': return 'An error occurred during research';
+            default: return 'Processing...';
+        }
+    };
+
+    const renderJobMessage = (job: JobStatus, isLast: boolean) => (
+        <div key={job.jobId} className="contents">
+            {/* User Query */}
+            <div className="mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary overflow-hidden">
+                        {user?.imageUrl ? (
+                            <img src={user.imageUrl} alt={user.fullName || "User"} className="w-full h-full object-cover" />
+                        ) : (
+                            "U"
+                        )}
+                    </div>
+                    <div className="flex-1">
+                        <div className="bg-secondary/50 rounded-2xl rounded-tl-sm px-6 py-4">
+                            <p className="text-base text-foreground leading-relaxed">
+                                {job.query}
+                            </p>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-2 ml-1">
+                            {new Date(job.createdAt).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            })}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Assistant Response */}
+            <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
+                <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-sm font-medium text-primary-foreground shadow-lg">
+                        AI
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        {/* Status Indicator */}
+                        {job.status !== 'done' && job.status !== 'error' && (
+                            <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
+                                {getStatusIcon(job.status)}
+                                <span>{getStatusText(job)}</span>
+                            </div>
+                        )}
+
+                        {/* Report Content */}
+                        {job.data.final ? (
+                            <ReportView data={job.data.final} />
+                        ) : (
+                            <div className="space-y-3">
+                                {/* Progress indicators as chat bubbles */}
+                                {job.data.plan && (
+                                    <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                            <span>Research plan created with {job.data.plan.search_queries?.length} search queries</span>
+                                        </div>
+                                    </div>
+                                )}
+                                {job.data.search && (
+                                    <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                            <span>Found {job.data.search.chunks?.length} relevant sources</span>
+                                        </div>
+                                    </div>
+                                )}
+                                {job.data.extraction && (
+                                    <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                            <span>Extracted {job.data.extraction.facts?.length} key insights</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Error state */}
+                        {job.status === 'error' && job.data.error && (
+                            <div className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
+                                {job.data.error}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 
     if (error) {
         return (
@@ -218,34 +357,28 @@ export default function JobPage() {
         );
     }
 
-    if (!job) {
+    if (isLoadingThread) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center">
                     <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-                    <div className="text-sm text-muted-foreground">Connecting to research stream...</div>
+                    <div className="text-sm text-muted-foreground">Loading conversation...</div>
                 </div>
             </div>
         );
     }
 
-    const getStatusIcon = () => {
-        if (job.status === 'done') return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-        if (job.status === 'error') return <XCircle className="w-4 h-4 text-red-500" />;
-        return <Loader2 className="w-4 h-4 animate-spin text-primary" />;
-    };
-
-    const getStatusText = () => {
-        switch (job.status) {
-            case 'planning': return 'Analyzing your question and planning research strategy...';
-            case 'searching': return `Searching the web with ${job.data.plan?.search_queries?.length || 0} optimized queries...`;
-            case 'extracting': return `Extracting insights from ${job.data.search?.chunks?.length || 0} sources...`;
-            case 'compiling': return 'Compiling comprehensive research report...';
-            case 'done': return 'Research complete';
-            case 'error': return 'An error occurred during research';
-            default: return 'Processing...';
-        }
-    };
+    // Combine historical thread with current live job
+    // If currentJob is available, replace the last item of thread with it (or append if not present)
+    // Actually, thread contains all jobs including current one (snapshot).
+    // We should use currentJob for the last item if IDs match.
+    const displayJobs = [...thread];
+    if (currentJob && displayJobs.length > 0 && displayJobs[displayJobs.length - 1].jobId === currentJob.jobId) {
+        displayJobs[displayJobs.length - 1] = currentJob;
+    } else if (currentJob) {
+        // Fallback or initial state where thread might not have caught up
+        displayJobs.push(currentJob);
+    }
 
     return (
         <div className="min-h-screen bg-background">
@@ -270,7 +403,7 @@ export default function JobPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={handleExportPDF}
-                                disabled={!job.data.final || job.status !== 'done'}
+                                disabled={!currentJob?.data.final || currentJob.status !== 'done'}
                                 className="hover:bg-amber-500/10 hover:border-amber-500/40 hover:text-amber-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <svg
@@ -299,87 +432,7 @@ export default function JobPage() {
 
             {/* Chat-like Content */}
             <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-32">
-                {/* User Query - like a chat message */}
-                <div className="mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary">
-                            U
-                        </div>
-                        <div className="flex-1">
-                            <div className="bg-secondary/50 rounded-2xl rounded-tl-sm px-6 py-4">
-                                <p className="text-base text-foreground leading-relaxed">
-                                    {job.query || 'Research query'}
-                                </p>
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-2 ml-1">
-                                {new Date(job.createdAt).toLocaleString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Assistant Response Area */}
-                <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
-                    <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-sm font-medium text-primary-foreground shadow-lg">
-                            AI
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            {/* Status Indicator */}
-                            {job.status !== 'done' && job.status !== 'error' && (
-                                <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
-                                    {getStatusIcon()}
-                                    <span>{getStatusText()}</span>
-                                </div>
-                            )}
-
-                            {/* Report Content */}
-                            {job.data.final ? (
-                                <ReportView data={job.data.final} />
-                            ) : (
-                                <div className="space-y-3">
-                                    {/* Progress indicators as chat bubbles */}
-                                    {job.data.plan && (
-                                        <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                                <span>Research plan created with {job.data.plan.search_queries?.length} search queries</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {job.data.search && (
-                                        <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                                <span>Found {job.data.search.chunks?.length} relevant sources</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {job.data.extraction && (
-                                        <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                                <span>Extracted {job.data.extraction.facts?.length} key insights</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Error state */}
-                            {job.status === 'error' && job.data.error && (
-                                <div className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
-                                    {job.data.error}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                {displayJobs.map((job, index) => renderJobMessage(job, index === displayJobs.length - 1))}
 
                 {/* Auto-scroll anchor */}
                 <div ref={bottomRef} />
@@ -427,11 +480,31 @@ export default function JobPage() {
                                 )}
                             </Button>
                         </div>
-                        <div className="text-xs text-muted-foreground text-center pb-2 px-4">
-                            {job?.status === 'done'
-                                ? `Ask a follow-up question • Press Enter to submit`
-                                : `Research in progress • Viewing job ${jobId.slice(0, 8)}`
-                            }
+                        <div className="flex items-center justify-between px-4 pb-3 pt-1">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setIsDeepResearch(!isDeepResearch)}
+                                    className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm ${isDeepResearch
+                                            ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                            : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                                        }`}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                        <path d="M2 12h10" />
+                                        <path d="M9 4v16" />
+                                        <path d="M3 9l3 3-3 3" />
+                                        <path d="M14 9l3 3-3 3" />
+                                        <path d="M22 12h-6" />
+                                    </svg>
+                                    Deep Research
+                                </button>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                                {currentJob?.status === 'done'
+                                    ? `Press Enter to submit`
+                                    : `Research in progress`
+                                }
+                            </div>
                         </div>
                     </div>
                 </div>

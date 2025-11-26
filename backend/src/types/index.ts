@@ -10,6 +10,8 @@ export interface JobStatus {
     query: string;
     createdAt: number;
     status: 'planning' | 'searching' | 'extracting' | 'compiling' | 'done' | 'error';
+    parentJobId?: string;
+    type?: 'research' | 'chat';
     data: JobData;
 }
 

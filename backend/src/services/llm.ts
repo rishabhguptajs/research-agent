@@ -122,3 +122,38 @@ export async function getEmbedding(text: string): Promise<number[]> {
         throw error;
     }
 }
+
+export async function complete(request: LLMRequest): Promise<string> {
+    const { prompt, system, apiKey } = request;
+
+    if (!apiKey) {
+        throw new Error('MISSING_API_KEY: User must provide an OpenRouter API key.');
+    }
+
+    const client = new OpenAI({
+        apiKey: apiKey,
+        baseURL: baseURL,
+    });
+
+    const systemMessage = system || 'You are a helpful AI assistant.';
+
+    try {
+        const completion = await client.chat.completions.create({
+            model: model!,
+            messages: [
+                { role: 'system', content: systemMessage },
+                { role: 'user', content: prompt }
+            ],
+        });
+
+        const content = completion.choices[0].message.content;
+        if (!content) {
+            throw new Error('LLM returned empty content');
+        }
+
+        return content;
+    } catch (error: any) {
+        console.error('LLM API Error:', error);
+        throw error;
+    }
+}
