@@ -1,12 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { createJob, getJob, getJobs, jobEmitter } from './orchestrator/job';
 import { clerkMiddleware, requireAuth } from './middleware/auth';
 import { connectDB } from './services/db';
-import { User } from './models/User';
-import { encrypt, decrypt } from './services/crypto';
-
+import userRoutes from './routes/user.routes';
+import jobRoutes from './routes/job.routes';
 
 dotenv.config();
 
@@ -54,139 +52,10 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString(), devMode: DEV_MODE });
 });
 
-app.post('/job', DEV_MODE ? devAuth() : requireAuth(), async (req, res) => {
-    const { query } = req.body;
-    const userId = req.auth.userId;
-
-    if (!query) {
-        return res.status(400).json({ error: 'Query is required' });
-    }
-
-    if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    // Check if user has API key configured
-    try {
-        const user = await User.findOne({ userId });
-        if (!user || !user.encryptedOpenRouterKey) {
-            return res.status(403).json({
-                error: 'API key not configured',
-                message: 'Please configure your OpenRouter API key in the dashboard before creating research jobs'
-            });
-        }
-    } catch (error) {
-        console.error('Error checking user API key:', error);
-        return res.status(500).json({ error: 'Internal server error' });
-    }
-
-    const jobId = await createJob(query, userId);
-    res.status(201).json({ jobId });
-});
-
-app.get('/jobs', DEV_MODE ? devAuth() : requireAuth(), async (req, res) => {
-    const userId = (req as any).auth.userId;
-    const userJobs = await getJobs(userId);
-    res.json(userJobs);
-});
-
-app.get('/job/:id', DEV_MODE ? devAuth() : requireAuth(), async (req, res) => {
-    const { id } = req.params;
-    const userId = (req as any).auth.userId;
-    const job = await getJob(id);
-
-    if (!job) {
-        return res.status(404).json({ error: 'Job not found' });
-    }
-
-    if (job.userId !== userId) {
-        return res.status(403).json({ error: 'Forbidden: You do not own this job' });
-    }
-
-    res.json(job);
-});
-
-app.get('/job/:id/stream', DEV_MODE ? devAuth() : requireAuth(), async (req, res) => {
-    const { id } = req.params;
-    const userId = (req as any).auth.userId;
-    const job = await getJob(id);
-
-    if (!job) {
-        return res.status(404).json({ error: 'Job not found' });
-    }
-
-    if (job.userId !== userId) {
-        return res.status(403).json({ error: 'Forbidden: You do not own this job' });
-    }
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    res.write(`data: ${JSON.stringify({ status: job.status, data: job.data, query: job.query, createdAt: job.createdAt })}\n\n`);
-
-    const onUpdate = (update: any) => {
-        if (update.jobId === id) {
-            res.write(`data: ${JSON.stringify(update)}\n\n`);
-            if (update.status === 'done' || update.status === 'error') {
-                res.end();
-            }
-        }
-    };
-
-    jobEmitter.on('update', onUpdate);
-
-    req.on('close', () => {
-        jobEmitter.off('update', onUpdate);
-    });
-});
-
-app.get('/user/key', DEV_MODE ? devAuth() : requireAuth(), async (req, res) => {
-    const userId = (req as any).auth.userId;
-    try {
-        const user = await User.findOne({ userId });
-        res.json({ hasKey: !!user?.encryptedOpenRouterKey });
-    } catch (error) {
-        console.error('Error fetching user key status:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-app.post('/user/key', DEV_MODE ? devAuth() : requireAuth(), async (req, res) => {
-    const userId = (req as any).auth.userId;
-    const { key } = req.body;
-
-    if (!key) {
-        return res.status(400).json({ error: 'Key is required' });
-    }
-
-    try {
-        const encryptedKey = encrypt(key);
-        await User.findOneAndUpdate(
-            { userId },
-            { userId, encryptedOpenRouterKey: encryptedKey, updatedAt: Date.now() },
-            { upsert: true, new: true }
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Error saving user key:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-app.delete('/user/key', DEV_MODE ? devAuth() : requireAuth(), async (req, res) => {
-    const userId = (req as any).auth.userId;
-    try {
-        await User.findOneAndUpdate(
-            { userId },
-            { $unset: { encryptedOpenRouterKey: "" }, updatedAt: Date.now() }
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Error deleting user key:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+// Mount routes
+app.use('/user', DEV_MODE ? devAuth() : requireAuth(), userRoutes);
+app.use('/job', DEV_MODE ? devAuth() : requireAuth(), jobRoutes);
+app.use('/jobs', DEV_MODE ? devAuth() : requireAuth(), jobRoutes);
 
 async function startServer() {
     try {
