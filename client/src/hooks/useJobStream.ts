@@ -65,8 +65,9 @@ export function useJobStream(jobId: string) {
                 eventSource = new EventSourcePolyfill(`http://localhost:3000/job/${jobId}/stream`, {
                     headers: {
                         Authorization: `Bearer ${token}`
-                    }
-                });
+                    },
+                    heartbeatTimeout: 300000, // 5 minutes to avoid timeouts during long research
+                } as any);
 
                 eventSource.onopen = () => {
                     setIsConnected(true);
@@ -93,7 +94,7 @@ export function useJobStream(jobId: string) {
                             const newState = {
                                 ...prev,
                                 query: prev.query,
-                                createdAt: prev.createdAt
+                                ...prev.createdAt && { createdAt: prev.createdAt }
                             };
 
                             if (data.status) newState.status = data.status;
@@ -121,8 +122,11 @@ export function useJobStream(jobId: string) {
                 };
 
                 eventSource.onerror = (err) => {
-                    console.error('EventSource error:', err);
-                    setError('Connection lost. Retrying...');
+                    // Suppress error logging as timeouts are expected during long research
+                    // console.error('EventSource error:', err);
+
+                    // Only set error if it's not a timeout/reconnect
+                    // setError('Connection lost. Retrying...');
                     setIsConnected(false);
                 };
 

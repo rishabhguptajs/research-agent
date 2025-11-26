@@ -1,9 +1,12 @@
+"use client";
+
 import { UserButton, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import ResearchForm from "@/components/research/ResearchForm";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
 export default function Home() {
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-24 relative overflow-hidden">
       {/* Background Grid */}
@@ -16,11 +19,13 @@ export default function Home() {
           <span className="font-mono font-bold tracking-tighter text-lg">RESEARCH_AGENT_V1</span>
         </div>
         <div className="flex items-center gap-4">
-          <Link href="/dashboard">
-            <Button className="rounded-none hover:bg-accent cursor-pointer">
+          <SignedIn>
+            <Link href="/dashboard">
+              <Button className="rounded-none hover:bg-accent cursor-pointer">
                 DASHBOARD
-            </Button>
-          </Link>
+              </Button>
+            </Link>
+          </SignedIn>
           <SignedIn>
             <UserButton
               appearance={{

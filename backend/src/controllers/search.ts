@@ -2,16 +2,14 @@ import { search } from '../services/tavily';
 import { chunkText } from '../services/chunk';
 import { createCollection, upsertChunks } from '../services/qdrant';
 import { SearchResult, Chunk } from '../types';
-import { v4 as uuidv4 } from 'uuid';
 
-export async function runSearcher(jobId: string, searchQueries: string[]): Promise<SearchResult> {
+export async function runSearcher(jobId: string, searchQueries: string[], tavilyApiKey: string): Promise<SearchResult> {
     const collectionName = `job_${jobId}`;
 
     await createCollection(collectionName);
 
     const allChunks: Chunk[] = [];
 
-    // Validate input
     if (!searchQueries || !Array.isArray(searchQueries) || searchQueries.length === 0) {
         console.error('[Search] Invalid search queries:', searchQueries);
         throw new Error('Search queries must be a non-empty array');
@@ -19,7 +17,7 @@ export async function runSearcher(jobId: string, searchQueries: string[]): Promi
 
     console.log('[Search] Executing queries:', searchQueries);
 
-    const searchPromises = searchQueries.map(q => search(q));
+    const searchPromises = searchQueries.map(q => search(q, tavilyApiKey));
     const searchResultsArray = await Promise.all(searchPromises);
 
     const allSearchResults = searchResultsArray.flat();
@@ -34,7 +32,8 @@ export async function runSearcher(jobId: string, searchQueries: string[]): Promi
             vector: c.embedding,
             payload: {
                 text: c.text,
-                source: c.source
+                source: c.source,
+                title: result.title
             }
         }));
 
@@ -44,7 +43,8 @@ export async function runSearcher(jobId: string, searchQueries: string[]): Promi
             allChunks.push(...chunks.map(c => ({
                 id: c.id,
                 text: c.text,
-                source: c.source || 'unknown'
+                source: c.source || 'unknown',
+                title: result.title
             })));
         }
     }

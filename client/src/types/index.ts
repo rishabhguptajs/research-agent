@@ -52,4 +52,5 @@ export interface CompileResult {
 export interface Citation {
     source: string;
     snippet: string;
+    title?: string;
 }

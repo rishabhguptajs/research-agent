@@ -2,7 +2,7 @@ import { generateJSON } from '../services/llm';
 import { ExtractionResult, CompileResult } from '../types';
 import { COMPILER_PROMPT, COMPILER_SYSTEM } from '../prompts/compiler';
 
-export async function runCompiler(extraction: ExtractionResult): Promise<CompileResult> {
+export async function runCompiler(extraction: ExtractionResult, apiKey: string): Promise<CompileResult> {
     const facts = extraction.facts;
 
     if (facts.length === 0) {
@@ -17,7 +17,8 @@ export async function runCompiler(extraction: ExtractionResult): Promise<Compile
         index: i + 1,
         assertion: f.assertion,
         snippet: f.snippet,
-        source: f.source
+        source: f.source,
+        title: f.title
     }));
 
     const prompt = COMPILER_PROMPT(factsWithContext);
@@ -40,7 +41,8 @@ export async function runCompiler(extraction: ExtractionResult): Promise<Compile
                     type: "object",
                     properties: {
                         source: { type: "string", description: "Full URL of the source" },
-                        snippet: { type: "string", description: "Relevant quote from the source" }
+                        snippet: { type: "string", description: "Relevant quote from the source" },
+                        title: { type: "string", description: "Title of the source page" }
                     },
                     required: ["source", "snippet"]
                 }
@@ -53,7 +55,8 @@ export async function runCompiler(extraction: ExtractionResult): Promise<Compile
         const result = await generateJSON<CompileResult>({
             prompt,
             schema,
-            system: COMPILER_SYSTEM
+            system: COMPILER_SYSTEM,
+            apiKey
         });
 
         console.log('[Compile] Result received:', {

@@ -36,6 +36,7 @@ export interface Chunk {
     id: string;
     text: string;
     source: string;
+    title?: string;
     embedding?: number[];
 }
 
@@ -47,6 +48,7 @@ export interface Fact {
     source: string;
     snippet: string;
     assertion: string;
+    title?: string;
 }
 
 export interface CompileResult {
@@ -58,10 +60,12 @@ export interface CompileResult {
 export interface Citation {
     source: string;
     snippet: string;
+    title?: string;
 }
 
 export interface LLMRequest {
     prompt: string;
     schema?: any;
     system?: string;
+    apiKey?: string;
 }

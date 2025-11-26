@@ -1,27 +1,57 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { useJobStream } from "@/hooks/useJobStream";
 import ReportView from "@/components/research/ReportView";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
 import jsPDF from 'jspdf';
+import api from "@/lib/api";
 
 export default function JobPage() {
     const params = useParams();
     const router = useRouter();
     const jobId = params.id as string;
     const { job, error, isConnected } = useJobStream(jobId);
+    const { getToken } = useAuth();
     const bottomRef = useRef<HTMLDivElement>(null);
+    const [followUpQuery, setFollowUpQuery] = useState("");
+    const [isSubmittingFollowUp, setIsSubmittingFollowUp] = useState(false);
 
-    // Auto-scroll to bottom when content updates
     useEffect(() => {
         if (bottomRef.current) {
             bottomRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [job]);
+
+    const handleFollowUpSubmit = async () => {
+        if (!followUpQuery.trim() || isSubmittingFollowUp) return;
+
+        setIsSubmittingFollowUp(true);
+        try {
+            const token = await getToken();
+            const response = await api.post(
+                '/job',
+                { query: followUpQuery.trim() },
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const { jobId: newJobId } = response.data;
+            router.push(`/job/${newJobId}`);
+        } catch (err) {
+            console.error('Follow-up submission error:', err);
+            alert('Failed to submit follow-up question. Please try again.');
+        } finally {
+            setIsSubmittingFollowUp(false);
+        }
+    };
 
     const handleExportPDF = () => {
         if (!job || !job.data.final) return;
@@ -34,44 +64,37 @@ export default function JobPage() {
 
         let yPosition = margin;
 
-        // --- Header ---
-        pdf.setFillColor(37, 99, 235); // Blue-600 #2563eb
+        pdf.setFillColor(37, 99, 235);
         pdf.rect(0, 0, pageWidth, 40, 'F');
 
-        // Title
         pdf.setFontSize(22);
-        pdf.setTextColor(255, 255, 255); // White
+        pdf.setTextColor(255, 255, 255);
         pdf.setFont('helvetica', 'bold');
         pdf.text('Research Report', margin, 25);
 
-        // Date
         pdf.setFontSize(10);
-        pdf.setTextColor(219, 234, 254); // Blue-100
+        pdf.setTextColor(219, 234, 254);
         pdf.setFont('helvetica', 'normal');
         pdf.text(`Generated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`, margin, 32);
 
         yPosition = 55;
 
-        // --- Query Section ---
         pdf.setFontSize(12);
-        pdf.setTextColor(100, 116, 139); // Slate-500
+        pdf.setTextColor(100, 116, 139);
         pdf.setFont('helvetica', 'bold');
         pdf.text('Research Query:', margin, yPosition);
 
         pdf.setFontSize(12);
-        pdf.setTextColor(15, 23, 42); // Slate-900
+        pdf.setTextColor(15, 23, 42);
         pdf.setFont('helvetica', 'normal');
         const queryLines = pdf.splitTextToSize(job.query, contentWidth - 40);
         pdf.text(queryLines, margin + 40, yPosition);
         yPosition += (queryLines.length * 7) + 15;
 
-        // --- Executive Summary ---
-        // Styled Box with Blue Border
-        pdf.setDrawColor(37, 99, 235); // Blue-600
+        pdf.setDrawColor(37, 99, 235);
         pdf.setLineWidth(0.5);
-        pdf.setFillColor(239, 246, 255); // Blue-50
+        pdf.setFillColor(239, 246, 255);
 
-        // Calculate summary height
         pdf.setFontSize(11);
         pdf.setFont('helvetica', 'normal');
         const summaryText = job.data.final.summary.replace(/\[\d+\]/g, '');
@@ -80,35 +103,31 @@ export default function JobPage() {
 
         pdf.roundedRect(margin, yPosition, contentWidth, summaryHeight, 2, 2, 'FD');
 
-        // Summary Title
         pdf.setFontSize(12);
-        pdf.setTextColor(30, 58, 138); // Blue-900
+        pdf.setTextColor(30, 58, 138);
         pdf.setFont('helvetica', 'bold');
         pdf.text('Executive Summary', margin + 5, yPosition + 10);
 
-        // Summary Text
         pdf.setFontSize(11);
-        pdf.setTextColor(51, 65, 85); // Slate-700
+        pdf.setTextColor(51, 65, 85);
         pdf.setFont('helvetica', 'normal');
         pdf.text(summaryLines, margin + 5, yPosition + 20);
 
         yPosition += summaryHeight + 20;
 
-        // --- Detailed Analysis ---
         pdf.setFontSize(16);
-        pdf.setTextColor(30, 58, 138); // Blue-900
+        pdf.setTextColor(30, 58, 138);
         pdf.setFont('helvetica', 'bold');
         pdf.text('Detailed Analysis', margin, yPosition);
         yPosition += 10;
 
-        // Process detailed text
         const detailedText = job.data.final.detailed
-            .replace(/#{1,3}\s/g, '') // Remove markdown headers
-            .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markers
-            .replace(/\[\d+\]/g, ''); // Remove citation markers
+            .replace(/#{1,3}\s/g, '')
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/\[\d+\]/g, '');
 
         pdf.setFontSize(11);
-        pdf.setTextColor(15, 23, 42); // Slate-900
+        pdf.setTextColor(15, 23, 42);
         pdf.setFont('helvetica', 'normal');
 
         const lines = pdf.splitTextToSize(detailedText, contentWidth);
@@ -376,27 +395,43 @@ export default function JobPage() {
                                     placeholder="Ask a follow-up question..."
                                     className="w-full resize-none bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none py-2 px-1 text-base"
                                     rows={1}
-                                    disabled
+                                    value={followUpQuery}
+                                    onChange={(e) => setFollowUpQuery(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleFollowUpSubmit();
+                                        }
+                                    }}
+                                    disabled={isSubmittingFollowUp}
                                     style={{ height: '44px' }}
                                 />
                             </div>
                             <Button
                                 size="icon"
                                 className="rounded-xl h-11 w-11 flex-shrink-0 bg-primary hover:bg-primary/90"
-                                disabled
+                                disabled={!followUpQuery.trim() || isSubmittingFollowUp}
+                                onClick={handleFollowUpSubmit}
                             >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 24 24"
-                                    fill="currentColor"
-                                    className="w-5 h-5"
-                                >
-                                    <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-                                </svg>
+                                {isSubmittingFollowUp ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                ) : (
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="currentColor"
+                                        className="w-5 h-5"
+                                    >
+                                        <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                                    </svg>
+                                )}
                             </Button>
                         </div>
                         <div className="text-xs text-muted-foreground text-center pb-2 px-4">
-                            Follow-up questions coming soon • Viewing research job {jobId.slice(0, 8)}
+                            {job?.status === 'done'
+                                ? `Ask a follow-up question • Press Enter to submit`
+                                : `Research in progress • Viewing job ${jobId.slice(0, 8)}`
+                            }
                         </div>
                     </div>
                 </div>

@@ -8,6 +8,8 @@ import { runCompiler } from '../controllers/compile';
 import { dropCollection } from '../services/qdrant';
 import { Job, IJob } from '../models/Job';
 import { isDBConnected } from '../services/db';
+import { User } from '../models/User';
+import { decrypt } from '../services/crypto';
 
 export const jobEmitter = new EventEmitter();
 
@@ -134,11 +136,23 @@ async function processJob(jobId: string, query: string) {
     if (!job) return;
 
     try {
+        const user = await User.findOne({ userId: job.userId });
+        if (!user || !user.encryptedOpenRouterKey) {
+            throw new Error('MISSING_API_KEY: You must provide an OpenRouter API key in Settings to use this tool.');
+        }
+
+        if (!user.encryptedTavilyKey) {
+            throw new Error('MISSING_API_KEY: You must provide a Tavily API key in Settings to use this tool.');
+        }
+
+        const openRouterApiKey = decrypt(user.encryptedOpenRouterKey);
+        const tavilyApiKey = decrypt(user.encryptedTavilyKey);
+
         console.log(`[Job ${jobId}] Starting Planning...`);
         await updateJobStatus(jobId, 'planning');
         jobEmitter.emit('update', { jobId, status: 'planning', step: 'start' });
 
-        const plan = await runPlanner(query);
+        const plan = await runPlanner(query, openRouterApiKey);
         job.data.plan = plan;
         await updateJobStatus(jobId, 'planning', { plan });
         jobEmitter.emit('update', { jobId, status: 'planning', step: 'complete', data: plan });
@@ -147,7 +161,7 @@ async function processJob(jobId: string, query: string) {
         await updateJobStatus(jobId, 'searching');
         jobEmitter.emit('update', { jobId, status: 'searching', step: 'start' });
 
-        const searchResult = await runSearcher(jobId, plan.search_queries);
+        const searchResult = await runSearcher(jobId, plan.search_queries, tavilyApiKey);
         job.data.search = searchResult;
         await updateJobStatus(jobId, 'searching', { search: searchResult });
         jobEmitter.emit('update', { jobId, status: 'searching', step: 'complete', data: searchResult });
@@ -156,7 +170,7 @@ async function processJob(jobId: string, query: string) {
         await updateJobStatus(jobId, 'extracting');
         jobEmitter.emit('update', { jobId, status: 'extracting', step: 'start' });
 
-        const extractionResult = await runExtractor(plan.sub_questions, searchResult.collectionName);
+        const extractionResult = await runExtractor(plan.sub_questions, searchResult.collectionName, openRouterApiKey);
         job.data.extraction = extractionResult;
         await updateJobStatus(jobId, 'extracting', { extraction: extractionResult });
         jobEmitter.emit('update', { jobId, status: 'extracting', step: 'complete', data: extractionResult });
@@ -165,7 +179,7 @@ async function processJob(jobId: string, query: string) {
         await updateJobStatus(jobId, 'compiling');
         jobEmitter.emit('update', { jobId, status: 'compiling', step: 'start' });
 
-        const finalResult = await runCompiler(extractionResult);
+        const finalResult = await runCompiler(extractionResult, openRouterApiKey);
         job.data.final = finalResult;
         console.log('[Job] Final result stored:', {
             jobId,
