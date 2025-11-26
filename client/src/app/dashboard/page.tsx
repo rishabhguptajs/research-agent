@@ -2,21 +2,31 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Clock, Search } from "lucide-react";
+import { ArrowLeft, Clock, Search, User, Key, Mail, TrendingUp, FileText, CheckCircle2 } from "lucide-react";
 import api from "@/lib/api";
 import { JobStatus } from "@/types";
+import ApiKeyModal from "@/components/ApiKeyModal";
 
 export default function Dashboard() {
     const [jobs, setJobs] = useState<JobStatus[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const router = useRouter();
-    const { getToken } = useAuth();
+    const { getToken, isSignedIn, isLoaded } = useAuth();
+    const { user } = useUser();
 
     useEffect(() => {
+        if (isLoaded && !isSignedIn) {
+            router.push("/");
+            return;
+        }
+
         const fetchJobs = async () => {
+            if (!isSignedIn) return;
+
             try {
                 const token = await getToken();
 
@@ -36,7 +46,23 @@ export default function Dashboard() {
         };
 
         fetchJobs();
-    }, [getToken]);
+    }, [getToken, isSignedIn, isLoaded, router]);
+
+    const completedJobs = jobs.filter(j => j.status === 'done').length;
+    const activeJobs = jobs.filter(j => j.status !== 'done' && j.status !== 'error').length;
+    const failedJobs = jobs.filter(j => j.status === 'error').length;
+
+    // Show loading screen while checking auth
+    if (!isLoaded || (isLoaded && !isSignedIn)) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="text-center space-y-4">
+                    <div className="w-12 h-12 border-2 border-primary border-t-transparent rounded-none animate-spin mx-auto"></div>
+                    <p className="text-sm text-muted-foreground font-mono">VERIFYING_ACCESS...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-background p-4 md:p-8 font-sans">
@@ -53,6 +79,77 @@ export default function Dashboard() {
                     <h1 className="text-xl font-bold tracking-tight">RESEARCH_ARCHIVE</h1>
                 </div>
             </header>
+
+            <div className="grid gap-6 md:grid-cols-4 mb-8">
+                {/* User Profile Card */}
+                <Card className="col-span-full md:col-span-1 border-primary/20 bg-primary/5">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                            <User className="w-5 h-5" />
+                            User Profile
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex items-center gap-2 text-sm">
+                            <Mail className="w-4 h-4 text-muted-foreground" />
+                            <span className="truncate">{user?.primaryEmailAddress?.emailAddress || "No email"}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground font-mono truncate">
+                            ID: {user?.id}
+                        </div>
+                        <Button
+                            variant="outline"
+                            className="w-full gap-2 text-sm"
+                            onClick={() => setIsSettingsOpen(true)}
+                        >
+                            <Key className="w-4 h-4" />
+                            Manage API Key
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                {/* Stats Cards */}
+                <Card className="border-green-500/20 bg-green-500/5">
+                    <CardHeader className="pb-2">
+                        <CardDescription className="text-xs">Completed</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-6 h-6 text-green-500" />
+                            <span className="text-3xl font-bold text-green-500">{completedJobs}</span>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="border-blue-500/20 bg-blue-500/5">
+                    <CardHeader className="pb-2">
+                        <CardDescription className="text-xs">In Progress</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-center gap-2">
+                            <TrendingUp className="w-6 h-6 text-blue-500" />
+                            <span className="text-3xl font-bold text-blue-500">{activeJobs}</span>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="border-red-500/20 bg-red-500/5">
+                    <CardHeader className="pb-2">
+                        <CardDescription className="text-xs">Failed</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-center gap-2">
+                            <FileText className="w-6 h-6 text-red-500" />
+                            <span className="text-3xl font-bold text-red-500">{failedJobs}</span>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                Recent Research
+            </h2>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {isLoading ? (
@@ -88,8 +185,8 @@ export default function Dashboard() {
                                         </CardDescription>
                                     </div>
                                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ml-2 ${job.status === 'done' ? 'bg-green-500' :
-                                            job.status === 'error' ? 'bg-red-500' :
-                                                'bg-blue-500 animate-pulse'
+                                        job.status === 'error' ? 'bg-red-500' :
+                                            'bg-blue-500 animate-pulse'
                                         }`} />
                                 </div>
                             </CardHeader>
@@ -100,8 +197,8 @@ export default function Dashboard() {
                                         <span>{new Date(job.createdAt).toLocaleDateString()} {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>
                                     <span className={`font-mono uppercase text-xs px-2 py-0.5 rounded-sm ${job.status === 'done' ? 'bg-green-500/10 text-green-500' :
-                                            job.status === 'error' ? 'bg-red-500/10 text-red-500' :
-                                                'bg-blue-500/10 text-blue-500'
+                                        job.status === 'error' ? 'bg-red-500/10 text-red-500' :
+                                            'bg-blue-500/10 text-blue-500'
                                         }`}>
                                         {job.status}
                                     </span>
@@ -111,6 +208,8 @@ export default function Dashboard() {
                     ))
                 )}
             </div>
+
+            <ApiKeyModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
         </div>
     );
 }
