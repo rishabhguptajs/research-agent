@@ -1,47 +1,23 @@
-import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { checkApiKeys } from "@/services/user.service";
-import { createJob } from "@/services/job.service";
+import { useApiKeys } from "./useApiKeys";
+import { useCreateJob } from "./useJobs";
 
 export function useResearchForm() {
-    const [query, setQuery] = useState("");
-    const [isLoading, setIsLoading] = useState(false);
-    const [hasOpenRouterKey, setHasOpenRouterKey] = useState(false);
-    const [hasTavilyKey, setHasTavilyKey] = useState(false);
-    const [checkingKey, setCheckingKey] = useState(true);
     const router = useRouter();
-    const { getToken, isSignedIn } = useAuth();
+    const { isSignedIn } = useAuth();
 
-    useEffect(() => {
-        const verifyKeys = async () => {
-            if (!isSignedIn) {
-                setCheckingKey(false);
-                return;
-            }
+    const { data: apiKeys, isLoading: checkingKey } = useApiKeys();
+    const createJobMutation = useCreateJob();
 
-            try {
-                const token = await getToken();
-                if (!token) return;
-                const keys = await checkApiKeys(token);
-                setHasOpenRouterKey(keys.hasOpenRouterKey);
-                setHasTavilyKey(keys.hasTavilyKey);
-            } catch (error) {
-                console.error("Failed to check API keys:", error);
-                setHasOpenRouterKey(false);
-                setHasTavilyKey(false);
-            } finally {
-                setCheckingKey(false);
-            }
-        };
+    const hasOpenRouterKey = apiKeys?.hasOpenRouterKey ?? false;
+    const hasTavilyKey = apiKeys?.hasTavilyKey ?? false;
+    const isLoading = createJobMutation.isPending;
 
-        verifyKeys();
-    }, [isSignedIn, getToken]);
-
-    const submitResearch = async (e?: React.FormEvent) => {
+    const submitResearch = async (e?: React.FormEvent, type: 'research' | 'chat' = 'research', query?: string) => {
         if (e) e.preventDefault();
 
-        if (!query.trim()) return;
+        if (!query || !query.trim()) return;
 
         if (!isSignedIn) {
             router.push("/sign-in");
@@ -53,27 +29,21 @@ export function useResearchForm() {
             return;
         }
 
-        setIsLoading(true);
         try {
-            const token = await getToken();
-            if (!token) throw new Error("No token found");
-
-            const data = await createJob(token, query);
-            router.push(`/job/${data.jobId}`);
+            await createJobMutation.mutateAsync({
+                query: query.trim(),
+                type
+            });
         } catch (error: any) {
             console.error("Failed to start research:", error);
             if (error.response?.status === 403) {
                 alert("Please configure your API key in the dashboard first");
                 router.push("/dashboard");
             }
-        } finally {
-            setIsLoading(false);
         }
     };
 
     return {
-        query,
-        setQuery,
         isLoading,
         hasOpenRouterKey,
         hasTavilyKey,

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { JobStatus } from '@/types';
+import { API_BASE_URL } from '@/lib/constants';
 
-// Redefining types for client-side to avoid direct backend import issues if not monorepo
 export interface JobData {
     plan?: {
         sub_questions: string[];
@@ -39,8 +39,7 @@ export function useJobStream(jobId: string) {
             try {
                 const token = await getToken();
 
-                // First, fetch the full job data to get createdAt and query
-                const jobResponse = await fetch(`http://localhost:3000/job/${jobId}`, {
+                const jobResponse = await fetch(`${API_BASE_URL}/job/${jobId}`, {
                     headers: {
                         Authorization: `Bearer ${token}`
                     }
@@ -48,7 +47,6 @@ export function useJobStream(jobId: string) {
 
                 if (jobResponse.ok) {
                     const fullJob = await jobResponse.json();
-                    // Initialize with complete job data
                     setJob({
                         jobId: fullJob.jobId,
                         userId: fullJob.userId,
@@ -59,14 +57,13 @@ export function useJobStream(jobId: string) {
                     });
                 }
 
-                // Now connect to SSE for live updates
                 const { EventSourcePolyfill } = await import('event-source-polyfill');
 
-                eventSource = new EventSourcePolyfill(`http://localhost:3000/job/${jobId}/stream`, {
+                eventSource = new EventSourcePolyfill(`${API_BASE_URL}/job/${jobId}/stream`, {
                     headers: {
                         Authorization: `Bearer ${token}`
                     },
-                    heartbeatTimeout: 300000, // 5 minutes to avoid timeouts during long research
+                    heartbeatTimeout: 300000,
                 } as any);
 
                 eventSource.onopen = () => {
@@ -77,6 +74,24 @@ export function useJobStream(jobId: string) {
                 eventSource.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
+
+                        if (data.type === 'stream' && data.chunk) {
+                            setJob(prev => {
+                                if (!prev) return prev;
+                                return {
+                                    ...prev,
+                                    data: {
+                                        ...prev.data,
+                                        final: {
+                                            summary: prev.data.final?.summary || '',
+                                            detailed: (prev.data.final?.detailed || '') + data.chunk,
+                                            citations: prev.data.final?.citations || []
+                                        }
+                                    }
+                                };
+                            });
+                            return;
+                        }
 
                         setJob(prev => {
                             if (!prev) {
@@ -90,7 +105,6 @@ export function useJobStream(jobId: string) {
                                 };
                             }
 
-                            // Preserve createdAt and query from initial fetch
                             const newState = {
                                 ...prev,
                                 query: prev.query,
@@ -99,14 +113,25 @@ export function useJobStream(jobId: string) {
 
                             if (data.status) newState.status = data.status;
 
-                            // Merge data if present
                             if (data.data) {
-                                if (data.status === 'planning' && data.step === 'complete') newState.data.plan = data.data;
-                                if (data.status === 'searching' && data.step === 'complete') newState.data.search = data.data;
-                                if (data.status === 'extracting' && data.step === 'complete') newState.data.extraction = data.data;
-                                if (data.status === 'compiling' && data.step === 'complete') newState.data.final = data.data;
-                                if (data.status === 'done') newState.data = data.data.data || newState.data;
-                                if (data.error) newState.data.error = data.error;
+                                if (data.status === 'planning' && data.step === 'complete') {
+                                    newState.data = { ...newState.data, plan: data.data };
+                                }
+                                if (data.status === 'searching' && data.step === 'complete') {
+                                    newState.data = { ...newState.data, search: data.data };
+                                }
+                                if (data.status === 'extracting' && data.step === 'complete') {
+                                    newState.data = { ...newState.data, extraction: data.data };
+                                }
+                                if (data.status === 'compiling' && data.step === 'complete') {
+                                    newState.data = { ...newState.data, final: data.data };
+                                }
+                                if (data.status === 'done') {
+                                    newState.data = data.data;
+                                }
+                                if (data.error) {
+                                    newState.data = { ...newState.data, error: data.error };
+                                }
                             }
 
                             return newState;
@@ -122,11 +147,6 @@ export function useJobStream(jobId: string) {
                 };
 
                 eventSource.onerror = (err) => {
-                    // Suppress error logging as timeouts are expected during long research
-                    // console.error('EventSource error:', err);
-
-                    // Only set error if it's not a timeout/reconnect
-                    // setError('Connection lost. Retrying...');
                     setIsConnected(false);
                 };
 
