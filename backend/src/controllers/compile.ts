@@ -83,3 +83,102 @@ export async function runCompiler(extraction: ExtractionResult, apiKey: string):
         throw error;
     }
 }
+
+export async function runCompilerStreaming(
+    extraction: ExtractionResult,
+    apiKey: string,
+    onChunk: (chunk: string) => void
+): Promise<CompileResult> {
+    const facts = extraction.facts;
+
+    if (facts.length === 0) {
+        return {
+            summary: "No sufficient information found.",
+            detailed: "Unable to compile a detailed report due to lack of extracted facts.",
+            citations: []
+        };
+    }
+
+    const factsWithContext = facts.map((f, i) => ({
+        index: i + 1,
+        assertion: f.assertion,
+        snippet: f.snippet,
+        source: f.source,
+        title: f.title
+    }));
+
+    const prompt = COMPILER_PROMPT(factsWithContext);
+
+    const schema = {
+        type: "object",
+        properties: {
+            summary: {
+                type: "string",
+                description: "2-3 sentence executive summary without citations"
+            },
+            detailed: {
+                type: "string",
+                description: "Comprehensive markdown report with [1], [2], [3] etc. EMBEDDED INLINE throughout the text"
+            },
+            citations: {
+                type: "array",
+                description: "Array of source citations matching the inline [N] numbers",
+                items: {
+                    type: "object",
+                    properties: {
+                        source: { type: "string", description: "Full URL of the source" },
+                        snippet: { type: "string", description: "Relevant quote from the source" },
+                        title: { type: "string", description: "Title of the source page" }
+                    },
+                    required: ["source", "snippet"]
+                }
+            }
+        },
+        required: ["summary", "detailed", "citations"]
+    };
+
+    const schemaDescription = `\n\nOutput strictly JSON matching this schema:\n${JSON.stringify(schema, null, 2)}`;
+    const systemMessage = COMPILER_SYSTEM + schemaDescription;
+
+    try {
+        const { streamComplete } = await import('../services/llm');
+
+        let accumulatedContent = '';
+
+        for await (const chunk of streamComplete({
+            prompt,
+            system: systemMessage,
+            apiKey
+        })) {
+            accumulatedContent += chunk;
+            onChunk(chunk);
+        }
+
+        console.log('[Compile Streaming] Full response received, parsing JSON...');
+
+        const result = JSON.parse(accumulatedContent) as CompileResult;
+
+        console.log('[Compile Streaming] Result parsed:', {
+            hasSummary: !!result.summary,
+            hasDetailed: !!result.detailed,
+            citationsCount: result.citations?.length || 0,
+            detailedLength: result.detailed?.length || 0,
+            containsInlineCitations: /\[\d+\]/.test(result.detailed || ''),
+        });
+
+        if (!result.summary || !result.detailed) {
+            console.error('[Compile Streaming] Invalid result - missing required fields');
+            throw new Error('Compile result missing required fields');
+        }
+
+        if (!/\[\d+\]/.test(result.detailed)) {
+            console.warn('[Compile Streaming] WARNING: No inline citations found in detailed report!');
+        }
+
+        return result;
+    } catch (error) {
+        console.error("Streaming compilation failed:", error);
+        throw error;
+    }
+}
+
