@@ -4,8 +4,10 @@ import { UserButton, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import ResearchForm from "@/components/research/ResearchForm";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useLatency } from "@/hooks/useLatency";
 
 export default function Home() {
+  const { formatLatency, getLatencyColor, getStatusColor } = useLatency();
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-24 relative overflow-hidden">
@@ -16,12 +18,15 @@ export default function Home() {
       <header className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-10">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 bg-primary"></div>
-          <span className="font-mono font-bold tracking-tighter text-lg">RESEARCH_AGENT_V1</span>
+          <span className="font-mono font-bold tracking-tighter text-lg">RAEGENT_AGENT_V1</span>
         </div>
         <div className="flex items-center gap-4">
           <SignedIn>
             <Link href="/dashboard">
-              <Button className="rounded-none hover:bg-accent cursor-pointer">
+              <Button
+                variant="ghost"
+                className="rounded-none font-mono tracking-wider bg-white/5 border border-white/10 text-white/90 hover:bg-white/10 hover:text-white hover:border-white/30 transition-all duration-300"
+              >
                 DASHBOARD
               </Button>
             </Link>
@@ -49,6 +54,8 @@ export default function Home() {
       <div className="z-10 w-full max-w-4xl flex flex-col items-center gap-8 text-center">
         <div className="space-y-4">
           <h1 className="text-5xl md:text-7xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white to-white/50">
+            RAEGENT
+            <br />
             AUTONOMOUS
             <br />
             RESEARCH ENGINE
@@ -69,13 +76,13 @@ export default function Home() {
       <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-background/50 backdrop-blur-sm flex justify-between items-center text-[10px] text-muted-foreground font-mono uppercase">
         <div className="flex gap-4">
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+            <span className={`w-1.5 h-1.5 rounded-full ${getStatusColor()} animate-pulse`}></span>
             SYSTEM_ONLINE
           </span>
-          <span>LATENCY: 12ms</span>
+          <span className={getLatencyColor()}>LATENCY: {formatLatency()}</span>
         </div>
         <div>
-          © 2025 RESEARCH_CORP
+          © 2025 RAEGENT
         </div>
       </div>
     </main>

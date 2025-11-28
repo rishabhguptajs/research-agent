@@ -13,8 +13,26 @@ export const createJob = async (token: string, query: string, parentJobId?: stri
     return response.data;
 };
 
+export const getJob = async (token: string, jobId: string) => {
+    const response = await api.get(`/job/${jobId}`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+    return response.data;
+};
+
 export const getJobs = async (token: string) => {
     const response = await api.get('/jobs', {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+    return response.data;
+};
+
+export const getJobThread = async (token: string, jobId: string) => {
+    const response = await api.get(`/job/${jobId}/thread`, {
         headers: {
             Authorization: `Bearer ${token}`,
         },

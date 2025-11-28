@@ -145,7 +145,7 @@ export const exportJobToPdf = (job: JobState) => {
         pdf.setTextColor(148, 163, 184); // Slate-400
         pdf.setFont('helvetica', 'normal');
         pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
-        pdf.text('Research Agent', pageWidth - margin, pageHeight - 8, { align: 'right' });
+        pdf.text('RAEGENT Research Agent', pageWidth - margin, pageHeight - 8, { align: 'right' });
     }
 
     // Save

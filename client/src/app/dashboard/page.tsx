@@ -50,7 +50,7 @@ export default function Dashboard() {
                     >
                         <ArrowLeft className="w-5 h-5" />
                     </Button>
-                    <h1 className="text-xl font-bold tracking-tight">RESEARCH_ARCHIVE</h1>
+                    <h1 className="text-xl font-bold tracking-tight">RAEGENT_ARCHIVE</h1>
                 </div>
             </header>
 
