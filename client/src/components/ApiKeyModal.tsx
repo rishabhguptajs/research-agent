@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@clerk/nextjs";
+import { API_BASE_URL } from "@/lib/constants";
 
 interface ApiKeyModalProps {
     isOpen: boolean;
@@ -32,7 +33,7 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
     const checkKeyStatus = async (provider: Provider) => {
         try {
             const token = await getToken();
-            const res = await fetch(`http://localhost:3000/user/key/${provider}`, {
+            const res = await fetch(`${API_BASE_URL}/user/key/${provider}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
@@ -54,7 +55,7 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
         setLoading(provider);
         try {
             const token = await getToken();
-            await fetch(`http://localhost:3000/user/key/${provider}`, {
+            await fetch(`${API_BASE_URL}/user/key/${provider}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -87,7 +88,7 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
         setLoading(provider);
         try {
             const token = await getToken();
-            await fetch(`http://localhost:3000/user/key/${provider}`, {
+            await fetch(`${API_BASE_URL}/user/key/${provider}`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${token}` },
             });
