@@ -1,103 +1,28 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth, SignInButton } from "@clerk/nextjs";
-import { motion } from "framer-motion";
-import { Search, Sparkles, ArrowRight, Lock, Key } from "lucide-react";
+import { Search, Sparkles, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import api from "@/lib/api";
 import { useMobile } from "@/hooks/use-mobile";
+import { useResearchForm } from "@/hooks/useResearchForm";
+import { StatusBanner } from "./StatusBanner";
 
 export default function ResearchForm() {
-    const [query, setQuery] = useState("");
-    const [isLoading, setIsLoading] = useState(false);
-    const [hasOpenRouterKey, setHasOpenRouterKey] = useState(false);
-    const [hasTavilyKey, setHasTavilyKey] = useState(false);
-    const [checkingKey, setCheckingKey] = useState(true);
-    const router = useRouter();
-    const { getToken, isSignedIn } = useAuth();
-
-    useEffect(() => {
-        const checkApiKey = async () => {
-            if (!isSignedIn) {
-                setCheckingKey(false);
-                return;
-            }
-
-            try {
-                const token = await getToken();
-
-                // Check both API keys
-                const [openRouterResponse, tavilyResponse] = await Promise.all([
-                    api.get("/user/key/openrouter", {
-                        headers: { Authorization: `Bearer ${token}` },
-                    }),
-                    api.get("/user/key/tavily", {
-                        headers: { Authorization: `Bearer ${token}` },
-                    })
-                ]);
-
-                setHasOpenRouterKey(openRouterResponse.data.hasKey);
-                setHasTavilyKey(tavilyResponse.data.hasKey);
-            } catch (error) {
-                console.error("Failed to check API keys:", error);
-                setHasOpenRouterKey(false);
-                setHasTavilyKey(false);
-            } finally {
-                setCheckingKey(false);
-            }
-        };
-
-        checkApiKey();
-    }, [isSignedIn, getToken]);
+    const {
+        query,
+        setQuery,
+        isLoading,
+        hasOpenRouterKey,
+        hasTavilyKey,
+        checkingKey,
+        submitResearch,
+        isSignedIn
+    } = useResearchForm();
 
     const isMobile = useMobile();
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!query.trim()) return;
-
-        if (!isSignedIn) {
-            router.push("/sign-in");
-            return;
-        }
-
-        if (!hasOpenRouterKey || !hasTavilyKey) {
-            router.push("/dashboard");
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            const token = await getToken();
-            const response = await api.post(
-                "/job",
-                { query },
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
-            const { jobId } = response.data;
-            router.push(`/job/${jobId}`);
-        } catch (error: any) {
-            console.error("Failed to start research:", error);
-
-            // Handle API key not configured error from backend
-            if (error.response?.status === 403) {
-                alert("Please configure your API key in the dashboard first");
-                router.push("/dashboard");
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     return (
-        <form onSubmit={handleSubmit} className="w-full max-w-2xl mx-auto space-y-4">
+        <form onSubmit={submitResearch} className="w-full max-w-2xl mx-auto space-y-4">
             <div className="relative group">
                 <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-accent rounded-none blur opacity-30 group-hover:opacity-75 transition duration-1000 group-hover:duration-200"></div>
                 <div className={`relative flex items-center bg-background border border-border ${isMobile ? 'p-1' : 'p-2'}`}>
@@ -129,37 +54,7 @@ export default function ResearchForm() {
 
             {/* Full-width glassmorphic status banner */}
             {isSignedIn && !checkingKey && (!hasOpenRouterKey || !hasTavilyKey) && (
-                <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="relative overflow-hidden"
-                >
-                    <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-orange-500/10 backdrop-blur-xl"></div>
-                    <div className={`relative border border-amber-500/30 bg-background/40 backdrop-blur-md flex items-center justify-between ${isMobile ? 'px-3 py-2' : 'px-4 py-3'}`}>
-                        <div className="flex items-center gap-3">
-                            <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
-                            <span className={`font-mono text-amber-500/90 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                                API_KEYS_NOT_CONFIGURED
-                            </span>
-                            {!isMobile && (
-                                <span className="text-xs text-muted-foreground">
-                                    {!hasOpenRouterKey && !hasTavilyKey
-                                        ? "Configure your OpenRouter and Tavily API keys to begin research"
-                                        : !hasOpenRouterKey
-                                            ? "Configure your OpenRouter API key to continue"
-                                            : "Configure your Tavily API key to continue"}
-                                </span>
-                            )}
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => router.push("/dashboard")}
-                            className="text-xs font-mono text-amber-500 hover:text-amber-400 transition-colors underline underline-offset-2"
-                        >
-                            CONFIGURE →
-                        </button>
-                    </div>
-                </motion.div>
+                <StatusBanner hasOpenRouterKey={hasOpenRouterKey} hasTavilyKey={hasTavilyKey} />
             )}
 
             <div className={`flex justify-center gap-4 text-xs text-muted-foreground font-mono ${isMobile ? 'flex-col items-center gap-2' : ''}`}>
