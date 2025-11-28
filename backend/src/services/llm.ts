@@ -157,3 +157,42 @@ export async function complete(request: LLMRequest): Promise<string> {
         throw error;
     }
 }
+
+export async function* streamComplete(request: LLMRequest): AsyncGenerator<string> {
+    const { prompt, system, apiKey } = request;
+
+    if (!apiKey) {
+        throw new Error('MISSING_API_KEY: User must provide an OpenRouter API key.');
+    }
+
+    const client = new OpenAI({
+        apiKey: apiKey,
+        baseURL: baseURL,
+    });
+
+    const systemMessage = system || 'You are a helpful AI assistant.';
+
+    try {
+        const stream = await client.chat.completions.create({
+            model: model!,
+            messages: [
+                { role: 'system', content: systemMessage },
+                { role: 'user', content: prompt }
+            ],
+            stream: true,
+        });
+
+        let chunkCount = 0;
+        for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content;
+            if (content) {
+                console.log(`[LLM Stream] Yielding chunk ${chunkCount++}:`, content.substring(0, 30));
+                yield content;
+            }
+        }
+        console.log(`[LLM Stream] Completed. Total chunks: ${chunkCount}`);
+    } catch (error: any) {
+        console.error('LLM Streaming API Error:', error);
+        throw error;
+    }
+}

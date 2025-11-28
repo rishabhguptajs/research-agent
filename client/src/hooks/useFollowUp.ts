@@ -1,45 +1,28 @@
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import { useCreateJob } from './useJobs';
 
 export function useFollowUp(jobId: string, getToken: () => Promise<string | null>) {
-    const [followUpQuery, setFollowUpQuery] = useState("");
-    const [isSubmittingFollowUp, setIsSubmittingFollowUp] = useState(false);
-    const router = useRouter();
+    const createJobMutation = useCreateJob();
 
-    const submitFollowUp = async (parentJobId: string, isDeepResearch: boolean) => {
-        if (!followUpQuery.trim() || isSubmittingFollowUp) return;
+    const submitFollowUp = async (parentJobId: string, isDeepResearch: boolean, query: string) => {
+        if (!query.trim()) return;
 
-        setIsSubmittingFollowUp(true);
         try {
-            const token = await getToken();
-            const response = await api.post(
-                '/job',
-                {
-                    query: followUpQuery.trim(),
-                    parentJobId: parentJobId || jobId,
-                    type: isDeepResearch ? 'research' : 'chat'
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
-
-            const { jobId: newJobId } = response.data;
-            router.push(`/job/${newJobId}`);
-        } catch (err) {
-            console.error('Follow-up submission error:', err);
-            alert('Failed to submit follow-up question. Please try again.');
-            setIsSubmittingFollowUp(false);
+            const type = isDeepResearch ? 'research' : 'chat';
+            await createJobMutation.mutateAsync({
+                query: query.trim(),
+                parentJobId,
+                type
+            });
+        } catch (error: any) {
+            console.error('Failed to submit follow-up:', error);
+            if (error.response?.status === 403) {
+                alert('Please configure your API keys in the dashboard first');
+            }
         }
     };
 
     return {
-        followUpQuery,
-        setFollowUpQuery,
-        isSubmittingFollowUp,
-        submitFollowUp
+        isSubmittingFollowUp: createJobMutation.isPending,
+        submitFollowUp,
     };
 }

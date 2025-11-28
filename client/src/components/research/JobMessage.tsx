@@ -1,58 +1,65 @@
 import { JobStatus } from "@/types";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import ReportView from "./ReportView";
+import { useMobile } from "@/hooks/use-mobile";
+import { Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { AnimatedDots } from "@/components/ui/AnimatedDots";
+
+const getStatusIcon = (status: string) => {
+    switch (status) {
+        case 'done': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+        case 'error': return <XCircle className="w-4 h-4 text-red-500" />;
+        default: return <Clock className="w-4 h-4 text-primary animate-pulse" />;
+    }
+};
+
+const getStatusText = (job: JobStatus) => {
+    switch (job.status) {
+        case 'planning':
+        case 'searching':
+        case 'extracting':
+        case 'compiling':
+            return 'Researching';
+        case 'done':
+            return 'Research complete';
+        case 'error':
+            return 'Research failed';
+        default:
+            return 'Processing';
+    }
+};
 
 interface JobMessageProps {
     job: JobStatus;
     userImageUrl?: string;
-    isLast: boolean;
+    isLast?: boolean;
 }
 
 export function JobMessage({ job, userImageUrl, isLast }: JobMessageProps) {
-    const getStatusIcon = (status: string) => {
-        if (status === 'done') return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-        if (status === 'error') return <XCircle className="w-4 h-4 text-red-500" />;
-        return <Loader2 className="w-4 h-4 animate-spin text-primary" />;
-    };
-
-    const getStatusText = (job: JobStatus) => {
-        switch (job.status) {
-            case 'planning': return 'Analyzing your question and planning research strategy...';
-            case 'searching': return `Searching the web with ${job.data.plan?.search_queries?.length || 0} optimized queries...`;
-            case 'extracting': return `Extracting insights from ${job.data.search?.chunks?.length || 0} sources...`;
-            case 'compiling': return 'Compiling comprehensive research report...';
-            case 'done': return 'Research complete';
-            case 'error': return 'An error occurred during research';
-            default: return 'Processing...';
-        }
-    };
+    const isMobile = useMobile();
+    const formattedDate = new Date(job.createdAt).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
 
     return (
-        <div key={job.jobId} className="contents">
+        <div className="space-y-4">
             {/* User Query */}
-            <div className="mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary overflow-hidden">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-accent to-accent/60 flex items-center justify-center overflow-hidden">
                         {userImageUrl ? (
                             <img src={userImageUrl} alt="User" className="w-full h-full object-cover" />
                         ) : (
-                            "U"
+                            <span className="text-sm font-medium text-accent-foreground">U</span>
                         )}
                     </div>
-                    <div className="flex-1">
-                        <div className="bg-secondary/50 rounded-2xl rounded-tl-sm px-6 py-4">
-                            <p className="text-base text-foreground leading-relaxed">
-                                {job.query}
-                            </p>
+                    <div className="flex-1 min-w-0">
+                        <div className={`text-foreground font-medium ${isMobile ? 'text-base' : 'text-lg'}`}>
+                            {job.query}
                         </div>
-                        <div className="text-xs text-muted-foreground mt-2 ml-1">
-                            {new Date(job.createdAt).toLocaleString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            })}
-                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">{formattedDate}</div>
                     </div>
                 </div>
             </div>
@@ -68,13 +75,19 @@ export function JobMessage({ job, userImageUrl, isLast }: JobMessageProps) {
                         {job.status !== 'done' && job.status !== 'error' && (
                             <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
                                 {getStatusIcon(job.status)}
-                                <span>{getStatusText(job)}</span>
+                                <span>{getStatusText(job)}<AnimatedDots /></span>
                             </div>
                         )}
 
                         {/* Report Content */}
                         {job.data.final ? (
-                            <ReportView data={job.data.final} />
+                            <div className="relative">
+                                <ReportView data={job.data.final} />
+                                {/* Streaming cursor - show when job is still processing but has content */}
+                                {(job.status === 'compiling' || job.status === 'planning') && job.data.final.detailed && (
+                                    <span className="inline-block w-2 h-4 ml-2 bg-primary animate-pulse"></span>
+                                )}
+                            </div>
                         ) : (
                             <div className="space-y-3">
                                 {/* Progress indicators as chat bubbles */}

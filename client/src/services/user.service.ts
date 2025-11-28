@@ -14,3 +14,21 @@ export const checkApiKeys = async (token: string) => {
         hasTavilyKey: tavilyResponse.data.hasKey
     };
 };
+
+export const saveApiKey = async (token: string, provider: 'openrouter' | 'tavily', apiKey: string) => {
+    const response = await api.post(
+        `/user/key/${provider}`,
+        { apiKey },
+        {
+            headers: { Authorization: `Bearer ${token}` },
+        }
+    );
+    return response.data;
+};
+
+export const deleteApiKey = async (token: string, provider: 'openrouter' | 'tavily') => {
+    const response = await api.delete(`/user/key/${provider}`, {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+};

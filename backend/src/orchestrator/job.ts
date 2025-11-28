@@ -275,7 +275,8 @@ Please answer the user's question based on the context and your general knowledg
         }, 60000);
     } catch (error: any) {
         console.error(`[Job ${jobId}] Failed:`, error);
-        await updateJobStatus(jobId, 'error', { error: error.message || String(error) });
-        jobEmitter.emit('update', { jobId, status: 'error', error: job.data.error });
+        const errorMessage = error.message || String(error);
+        await updateJobStatus(jobId, 'error', { error: errorMessage });
+        jobEmitter.emit('update', { jobId, status: 'error', error: errorMessage });
     }
 }

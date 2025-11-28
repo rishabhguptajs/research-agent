@@ -5,10 +5,11 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { ReactQueryProvider } from "@/providers/react-query-provider";
 
 export const metadata: Metadata = {
-  title: "Research Agent",
-  description: "Autonomous Research Agent",
+  title: "RAEGENT Research Agent",
+  description: "RAEGENT Autonomous Research Agent - Deep dive into any topic with AI-driven analysis",
 };
 
 export default function RootLayout({
@@ -36,7 +37,9 @@ export default function RootLayout({
             GeistMono.variable
           )}
         >
-          {children}
+          <ReactQueryProvider>
+            {children}
+          </ReactQueryProvider>
         </body>
       </html>
     </ClerkProvider>
