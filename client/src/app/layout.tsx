@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 import { ReactQueryProvider } from "@/providers/react-query-provider";
 
 export const metadata: Metadata = {
-  title: "RAEGENT Research Agent",
-  description: "RAEGENT Autonomous Research Agent - Deep dive into any topic with AI-driven analysis",
+  title: "Research Agent",
+  description: "Autonomous Research Agent - Deep dive into any topic with AI-driven analysis",
 };
 
 export default function RootLayout({

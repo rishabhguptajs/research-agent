@@ -205,7 +205,7 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
                 </div>
 
                 <DialogFooter className="sm:justify-start">
-                    <Button variant="outline" onClick={onClose}>
+                    <Button variant="outline" onClick={onClose} className="cursor-pointer">
                         Close
                     </Button>
                 </DialogFooter>
