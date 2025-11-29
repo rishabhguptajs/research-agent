@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { JobStatus } from "@/types";
-import { getJobs } from "@/services/job.service";
+import { getJobs, deleteJob } from "@/services/job.service";
 
 export function useDashboard() {
     const [jobs, setJobs] = useState<JobStatus[]>([]);
@@ -36,12 +36,25 @@ export function useDashboard() {
         fetchJobs();
     }, [getToken, isSignedIn, isLoaded, router]);
 
+    const handleDeleteJob = async (jobId: string) => {
+        try {
+            const token = await getToken();
+            if (!token) return;
+            await deleteJob(token, jobId);
+            setJobs(prev => prev.filter(job => job.jobId !== jobId));
+        } catch (error) {
+            console.error("Failed to delete job:", error);
+            throw error;
+        }
+    };
+
     return {
         jobs,
         isLoading,
         isSettingsOpen,
         setIsSettingsOpen,
         isSignedIn,
-        isLoaded
+        isLoaded,
+        handleDeleteJob
     };
 }

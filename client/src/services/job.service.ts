@@ -39,3 +39,12 @@ export const getJobThread = async (token: string, jobId: string) => {
     });
     return response.data;
 };
+
+export const deleteJob = async (token: string, jobId: string) => {
+    const response = await api.delete(`/job/${jobId}`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+    return response.data;
+};

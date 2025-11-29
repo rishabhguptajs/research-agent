@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import { ArrowLeft, Clock, Search, User, Key, Mail, TrendingUp, FileText, CheckC
 import ApiKeyModal from "@/components/ApiKeyModal";
 import { useDashboard } from "@/hooks/useDashboard";
 import { JobCard } from "@/components/dashboard/JobCard";
+import { Modal } from "@/components/ui/Modal";
 
 export default function Dashboard() {
     const {
@@ -16,15 +18,32 @@ export default function Dashboard() {
         isSettingsOpen,
         setIsSettingsOpen,
         isSignedIn,
-        isLoaded
+        isLoaded,
+        handleDeleteJob
     } = useDashboard();
 
     const router = useRouter();
     const { user } = useUser();
+    const [jobToDelete, setJobToDelete] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const completedJobs = jobs.filter(j => j.status === 'done').length;
     const activeJobs = jobs.filter(j => j.status !== 'done' && j.status !== 'error').length;
     const failedJobs = jobs.filter(j => j.status === 'error').length;
+
+    const confirmDelete = async () => {
+        if (!jobToDelete) return;
+        setIsDeleting(true);
+        try {
+            await handleDeleteJob(jobToDelete);
+            setJobToDelete(null);
+        } catch (error) {
+            console.error("Failed to delete job", error);
+            alert("Failed to delete job");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     // Show loading screen while checking auth
     if (!isLoaded || (isLoaded && !isSignedIn)) {
@@ -50,7 +69,7 @@ export default function Dashboard() {
                     >
                         <ArrowLeft className="w-5 h-5" />
                     </Button>
-                    <h1 className="text-xl font-bold tracking-tight">RAEGENT_ARCHIVE</h1>
+                    <h1 className="text-xl font-bold tracking-tight">RESEARCH_ARCHIVE</h1>
                 </div>
             </header>
 
@@ -143,12 +162,33 @@ export default function Dashboard() {
                     </div>
                 ) : (
                     jobs.map((job) => (
-                        <JobCard key={job.jobId} job={job} />
+                        <JobCard
+                            key={job.jobId}
+                            job={job}
+                            onDelete={(id) => setJobToDelete(id)}
+                        />
                     ))
                 )}
             </div>
 
             <ApiKeyModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
+            <Modal
+                isOpen={!!jobToDelete}
+                onClose={() => setJobToDelete(null)}
+                title="Delete Research Job"
+                description="Are you sure you want to delete this research job? This action cannot be undone."
+                footer={
+                    <div className="flex gap-2 justify-end w-full">
+                        <Button variant="outline" onClick={() => setJobToDelete(null)} disabled={isDeleting}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={confirmDelete} disabled={isDeleting}>
+                            {isDeleting ? "Deleting..." : "Delete"}
+                        </Button>
+                    </div>
+                }
+            />
         </div>
     );
 }
