@@ -18,4 +18,7 @@ router.get('/:id', JobController.getJobById);
 // GET /job/:id/stream - Stream job updates via SSE
 router.get('/:id/stream', JobController.streamJobUpdates);
 
+// DELETE /job/:id - Delete a job
+router.delete('/:id', JobController.deleteJob);
+
 export default router;

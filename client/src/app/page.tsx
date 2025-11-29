@@ -18,14 +18,14 @@ export default function Home() {
       <header className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-10">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 bg-primary"></div>
-          <span className="font-mono font-bold tracking-tighter text-lg">RAEGENT_AGENT_V1</span>
+          <span className="font-mono font-bold tracking-tighter text-lg">RESEARCH_AGENT_V1</span>
         </div>
         <div className="flex items-center gap-4">
           <SignedIn>
             <Link href="/dashboard">
               <Button
                 variant="ghost"
-                className="rounded-none font-mono tracking-wider bg-white/5 border border-white/10 text-white/90 hover:bg-white/10 hover:text-white hover:border-white/30 transition-all duration-300"
+                className="rounded-none cursor-pointer font-mono tracking-wider bg-white/5 border border-white/10 text-white/90 hover:bg-white/10 hover:text-white hover:border-white/30 transition-all duration-300"
               >
                 DASHBOARD
               </Button>
@@ -54,7 +54,7 @@ export default function Home() {
       <div className="z-10 w-full max-w-4xl flex flex-col items-center gap-8 text-center">
         <div className="space-y-4">
           <h1 className="text-5xl md:text-7xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white to-white/50">
-            RAEGENT
+            RESEARCH
             <br />
             AUTONOMOUS
             <br />
@@ -82,7 +82,7 @@ export default function Home() {
           <span className={getLatencyColor()}>LATENCY: {formatLatency()}</span>
         </div>
         <div>
-          © 2025 RAEGENT
+          © 2025 RESEARCH_AGENT
         </div>
       </div>
     </main>

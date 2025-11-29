@@ -12,6 +12,10 @@ import { useJobThread } from "@/hooks/useJobThread";
 import { useFollowUp } from "@/hooks/useFollowUp";
 import { JobMessage } from "@/components/research/JobMessage";
 import ChatInput from "@/components/research/ChatInput";
+import { useResearchForm } from "@/hooks/useResearchForm";
+import { Modal } from "@/components/ui/Modal";
+
+import { getJobPdfBlobUrl } from "@/utils/pdf-export";
 
 export default function JobPage() {
     const params = useParams();
@@ -23,6 +27,10 @@ export default function JobPage() {
     const bottomRef = useRef<HTMLDivElement>(null);
     const { thread, isLoadingThread } = useJobThread(jobId, getToken);
     const { isSubmittingFollowUp, submitFollowUp } = useFollowUp(jobId, getToken);
+    // Re-using this hook to get key status for the chat input validation
+    const { hasOpenRouterKey, hasTavilyKey, checkingKey, isSignedIn } = useResearchForm();
+    const [showExportConfirm, setShowExportConfirm] = useState(false);
+    const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
 
     useEffect(() => {
         if (bottomRef.current) {
@@ -31,9 +39,26 @@ export default function JobPage() {
     }, [currentJob, thread.length]);
 
     const handleExportPDF = () => {
+        if (currentJob && currentJob.data.final) {
+            const blobUrl = getJobPdfBlobUrl(currentJob);
+            if (blobUrl) {
+                setPdfPreviewUrl(blobUrl.toString());
+                setShowExportConfirm(true);
+            }
+        }
+    };
+
+    const confirmExport = () => {
         if (currentJob) {
             exportJobToPdf(currentJob);
+            setShowExportConfirm(false);
+            setPdfPreviewUrl(null);
         }
+    };
+
+    const handleCloseExport = () => {
+        setShowExportConfirm(false);
+        setPdfPreviewUrl(null);
     };
 
     if (error) {
@@ -92,7 +117,7 @@ export default function JobPage() {
                                 size="sm"
                                 onClick={handleExportPDF}
                                 disabled={!currentJob?.data.final || currentJob.status !== 'done'}
-                                className="hover:bg-amber-500/10 hover:border-amber-500/40 hover:text-amber-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="hover:bg-amber-500/10 cursor-pointer hover:border-amber-500/40 hover:text-amber-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <svg
                                     xmlns="http://www.w3.org/2000/svg"
@@ -112,7 +137,7 @@ export default function JobPage() {
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="font-mono tracking-wider bg-primary/5 border border-primary/10 text-primary/90 hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-all duration-300"
+                                    className="font-mono cursor-pointer tracking-wider bg-primary/5 border border-primary/10 text-primary/90 hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-all duration-300"
                                 >
                                     Dashboard
                                 </Button>
@@ -146,9 +171,41 @@ export default function JobPage() {
                         disabled={currentJob?.status !== 'done'}
                         placeholder="Ask a follow-up question..."
                         defaultMode={(currentJob?.type === 'chat') ? 'chat' : 'research'}
+                        hasOpenRouterKey={hasOpenRouterKey}
+                        hasTavilyKey={hasTavilyKey}
+                        isSignedIn={isSignedIn}
+                        checkingKey={checkingKey}
                     />
                 </div>
             </div>
+
+            <Modal
+                isOpen={showExportConfirm}
+                onClose={handleCloseExport}
+                title="Export Research Report"
+                description="Preview the generated PDF report below."
+                className="max-w-4xl w-full"
+                footer={
+                    <div className="flex gap-2 justify-end w-full">
+                        <Button variant="outline" onClick={handleCloseExport}>
+                            Cancel
+                        </Button>
+                        <Button onClick={confirmExport} className="bg-amber-500 hover:bg-amber-600 text-white">
+                            Download PDF
+                        </Button>
+                    </div>
+                }
+            >
+                {pdfPreviewUrl && (
+                    <div className="w-full h-[60vh] bg-muted/20 rounded-lg overflow-hidden border border-border">
+                        <iframe
+                            src={pdfPreviewUrl}
+                            className="w-full h-full"
+                            title="PDF Preview"
+                        />
+                    </div>
+                )}
+            </Modal>
         </div>
     );
 }

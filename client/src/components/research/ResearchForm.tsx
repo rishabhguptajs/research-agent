@@ -1,7 +1,6 @@
 "use client";
 
 import { useResearchForm } from "@/hooks/useResearchForm";
-import { StatusBanner } from "./StatusBanner";
 import { useMobile } from "@/hooks/use-mobile";
 import ChatInput from "./ChatInput";
 
@@ -21,7 +20,7 @@ export default function ResearchForm() {
         submitResearch(undefined, isDeepResearch ? 'research' : 'chat', query);
     };
 
-    const isDisabled = isSignedIn && (!hasOpenRouterKey || !hasTavilyKey) && !checkingKey;
+    const isDisabled = checkingKey;
 
     return (
         <div className="w-full max-w-2xl mx-auto space-y-4">
@@ -31,12 +30,11 @@ export default function ResearchForm() {
                 disabled={isDisabled}
                 autoFocus
                 defaultMode="research"
+                hasOpenRouterKey={hasOpenRouterKey}
+                hasTavilyKey={hasTavilyKey}
+                isSignedIn={isSignedIn}
+                checkingKey={checkingKey}
             />
-
-            {/* Full-width glassmorphic status banner */}
-            {isSignedIn && !checkingKey && (!hasOpenRouterKey || !hasTavilyKey) && (
-                <StatusBanner hasOpenRouterKey={hasOpenRouterKey} hasTavilyKey={hasTavilyKey} />
-            )}
 
             <div className={`flex justify-center gap-4 text-xs text-muted-foreground font-mono ${isMobile ? 'flex-col items-center gap-2' : ''}`}>
                 <span>Try: "Solid state batteries"</span>
