@@ -1,8 +1,8 @@
 import jsPDF from 'jspdf';
 import { JobState } from '@/hooks/useJobStream';
 
-export const exportJobToPdf = (job: JobState) => {
-    if (!job || !job.data.final) return;
+export const generateJobPdf = (job: JobState) => {
+    if (!job || !job.data.final) return null;
 
     const pdf = new jsPDF('p', 'mm', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -145,10 +145,21 @@ export const exportJobToPdf = (job: JobState) => {
         pdf.setTextColor(148, 163, 184); // Slate-400
         pdf.setFont('helvetica', 'normal');
         pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
-        pdf.text('RAEGENT Research Agent', pageWidth - margin, pageHeight - 8, { align: 'right' });
+        pdf.text('Research Agent', pageWidth - margin, pageHeight - 8, { align: 'right' });
     }
 
-    // Save
+    return pdf;
+};
+
+export const exportJobToPdf = (job: JobState) => {
+    const pdf = generateJobPdf(job);
+    if (!pdf) return;
     const fileName = `research-${job.query.substring(0, 30).replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now()}.pdf`;
     pdf.save(fileName);
+};
+
+export const getJobPdfBlobUrl = (job: JobState) => {
+    const pdf = generateJobPdf(job);
+    if (!pdf) return null;
+    return pdf.output('bloburl');
 };
