@@ -8,7 +8,7 @@ const activeConnections = new Map<string, Response<any, Record<string, any>>>();
 export class JobController {
     static async createJob(req: Request, res: Response) {
         const { query, type } = req.body;
-        const userId = (req as any).auth.userId;
+        const userId = (req as any).auth().userId;
 
         if (!query) {
             return res.status(400).json({ error: 'Query is required' });
@@ -46,7 +46,7 @@ export class JobController {
     static async addMessage(req: Request, res: Response) {
         const { id } = req.params;
         const { message, type } = req.body;
-        const userId = (req as any).auth.userId;
+        const userId = (req as any).auth().userId;
 
         if (!message) {
             return res.status(400).json({ error: 'Message content is required' });
@@ -65,14 +65,14 @@ export class JobController {
     }
 
     static async getUserJobs(req: Request, res: Response) {
-        const userId = (req as any).auth.userId;
+        const userId = (req as any).auth().userId;
         const userJobs = await getJobs(userId);
         res.json(userJobs);
     }
 
     static async getJobById(req: Request, res: Response) {
         const { id } = req.params;
-        const userId = (req as any).auth.userId;
+        const userId = (req as any).auth().userId;
 
         const jobData = await getJob(id);
 
@@ -89,7 +89,7 @@ export class JobController {
 
     static async streamJobUpdates(req: Request, res: Response) {
         const { id } = req.params;
-        const userId = (req as any).auth.userId;
+        const userId = (req as any).auth().userId;
 
         const jobData = await getJob(id);
 
@@ -135,7 +135,7 @@ export class JobController {
 
     static async deleteJob(req: Request, res: Response) {
         const { id } = req.params;
-        const userId = (req as any).auth.userId;
+        const userId = (req as any).auth().userId;
 
         try {
             const job = await Job.findOne({ jobId: id });

@@ -6,13 +6,14 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import { useJobStream } from "@/hooks/useJobStream";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, Loader2, XCircle } from "lucide-react";
+import { ArrowLeft, XCircle } from "lucide-react";
 import { exportJobToPdf, getJobPdfBlobUrl } from "@/utils/pdf-export";
 import { JobMessage } from "@/components/research/JobMessage";
 import ChatInput from "@/components/research/ChatInput";
 import { useResearchForm } from "@/hooks/useResearchForm";
 import { Modal } from "@/components/ui/Modal";
 import { sendMessage } from "@/services/job.service";
+import { Loader } from "@/components/ui/Loader";
 
 export default function JobPage() {
     const params = useParams();
@@ -87,14 +88,7 @@ export default function JobPage() {
     }
 
     if (!job && !error) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="text-center">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-                    <div className="text-sm text-muted-foreground">Loading conversation...</div>
-                </div>
-            </div>
-        );
+        return <Loader fullScreen text="Loading conversation..." />;
     }
 
     const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
