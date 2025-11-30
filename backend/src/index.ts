@@ -41,21 +41,13 @@ if (!DEV_MODE) {
     app.use(clerkMiddleware());
 }
 
-const devAuth = () => (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (DEV_MODE) {
-        (req as any).auth = { userId: 'dev-user-123' };
-    }
-    next();
-};
-
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString(), devMode: DEV_MODE });
 });
 
-// Mount routes
-app.use('/user', DEV_MODE ? devAuth() : requireAuth(), userRoutes);
-app.use('/job', DEV_MODE ? devAuth() : requireAuth(), jobRoutes);
-app.use('/jobs', DEV_MODE ? devAuth() : requireAuth(), jobRoutes);
+app.use('/user', requireAuth(), userRoutes);
+app.use('/job', requireAuth(), jobRoutes);
+app.use('/jobs', requireAuth(), jobRoutes);
 
 async function startServer() {
     try {
