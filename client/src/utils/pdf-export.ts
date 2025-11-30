@@ -1,8 +1,8 @@
 import jsPDF from 'jspdf';
-import { JobState } from '@/hooks/useJobStream';
+import { Job, Message } from '@/types';
 
-export const generateJobPdf = (job: JobState) => {
-    if (!job || !job.data.final) return null;
+export const generateJobPdf = (job: Job, messages: Message[]) => {
+    if (!job || !messages) return null;
 
     const pdf = new jsPDF('p', 'mm', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -19,147 +19,140 @@ export const generateJobPdf = (job: JobState) => {
     pdf.setTextColor(255, 255, 255);
     pdf.setFont('helvetica', 'bold');
     pdf.text('Research Report', margin, 25);
-
-    pdf.setFontSize(10);
-    pdf.setTextColor(219, 234, 254);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(`Generated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`, margin, 32);
-
-    yPosition = 55;
-
-    pdf.setFontSize(12);
-    pdf.setTextColor(100, 116, 139);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Research Query:', margin, yPosition);
-
-    pdf.setFontSize(12);
-    pdf.setTextColor(15, 23, 42);
-    pdf.setFont('helvetica', 'normal');
-    const queryLines = pdf.splitTextToSize(job.query, contentWidth - 40);
-    pdf.text(queryLines, margin + 40, yPosition);
-    yPosition += (queryLines.length * 7) + 15;
-
-    pdf.setDrawColor(37, 99, 235);
-    pdf.setLineWidth(0.5);
-    pdf.setFillColor(239, 246, 255);
-
-    pdf.setFontSize(11);
-    pdf.setFont('helvetica', 'normal');
-    const summaryText = job.data.final.summary.replace(/\[\d+\]/g, '');
-    const summaryLines = pdf.splitTextToSize(summaryText, contentWidth - 10);
-    const summaryHeight = (summaryLines.length * 6) + 25;
-
-    pdf.roundedRect(margin, yPosition, contentWidth, summaryHeight, 2, 2, 'FD');
-
-    pdf.setFontSize(12);
-    pdf.setTextColor(30, 58, 138);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Executive Summary', margin + 5, yPosition + 10);
-
-    pdf.setFontSize(11);
-    pdf.setTextColor(51, 65, 85);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(summaryLines, margin + 5, yPosition + 20);
-
-    yPosition += summaryHeight + 20;
-
-    pdf.setFontSize(16);
-    pdf.setTextColor(30, 58, 138);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Detailed Analysis', margin, yPosition);
+    pdf.setFontSize(20);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('Research Report', margin, yPosition);
     yPosition += 10;
 
-    const detailedText = job.data.final.detailed
-        .replace(/#{1,3}\s/g, '')
-        .replace(/\*\*(.*?)\*\*/g, '$1')
-        .replace(/\[\d+\]/g, '');
-
-    pdf.setFontSize(11);
-    pdf.setTextColor(15, 23, 42);
-    pdf.setFont('helvetica', 'normal');
-
-    const lines = pdf.splitTextToSize(detailedText, contentWidth);
-    const lineHeight = 7;
-
-    for (let i = 0; i < lines.length; i++) {
-        if (yPosition + lineHeight > pageHeight - margin) {
-            pdf.addPage();
-            yPosition = margin + 10; // Extra margin on new pages
-        }
-        pdf.text(lines[i], margin, yPosition);
-        yPosition += lineHeight;
-    }
-
-    // --- Sources Section ---
-    pdf.addPage();
-    yPosition = margin + 10;
-
-    pdf.setFontSize(16);
-    pdf.setTextColor(30, 58, 138); // Blue-900
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Sources & References', margin, yPosition);
+    pdf.setFontSize(12);
+    pdf.setTextColor(100, 100, 100);
+    pdf.text(`Date: ${new Date(job.createdAt).toLocaleDateString()}`, margin, yPosition);
     yPosition += 15;
 
-    job.data.final.citations.forEach((citation, idx) => {
-        if (yPosition + 25 > pageHeight - margin) {
-            pdf.addPage();
-            yPosition = margin + 10;
+    messages.forEach(msg => {
+        if (msg.role === 'assistant' && msg.data?.final) {
+            pdf.setFontSize(16);
+            pdf.setTextColor(0, 0, 0);
+            const title = msg.content || 'Research Result';
+            const splitTitle = pdf.splitTextToSize(title, pageWidth - (margin * 2));
+            pdf.text(splitTitle, margin, yPosition);
+            yPosition += (splitTitle.length * 7) + 5;
+
+            if (msg.data.final.summary) {
+                pdf.setFontSize(14);
+                pdf.text('Summary', margin, yPosition);
+                yPosition += 8;
+
+                pdf.setFontSize(11);
+                pdf.setTextColor(50, 50, 50);
+                const splitSummary = pdf.splitTextToSize(msg.data.final.summary, pageWidth - (margin * 2));
+
+                if (yPosition + (splitSummary.length * 5) > pageHeight - margin) {
+                    pdf.addPage();
+                    yPosition = margin;
+                }
+
+                pdf.text(splitSummary, margin, yPosition);
+                yPosition += (splitSummary.length * 5) + 10;
+            }
+
+            if (msg.data.final.detailed) {
+                if (yPosition + 20 > pageHeight - margin) {
+                    pdf.addPage();
+                    yPosition = margin;
+                }
+
+                pdf.setFontSize(14);
+                pdf.setTextColor(0, 0, 0);
+                pdf.text('Detailed Analysis', margin, yPosition);
+                yPosition += 8;
+
+                pdf.setFontSize(11);
+                pdf.setTextColor(50, 50, 50);
+
+                const cleanText = msg.data.final.detailed.replace(/[*#_`]/g, '');
+                const splitDetailed = pdf.splitTextToSize(cleanText, pageWidth - (margin * 2));
+
+                splitDetailed.forEach((line: string) => {
+                    if (yPosition + 5 > pageHeight - margin) {
+                        pdf.addPage();
+                        yPosition = margin;
+                    }
+                    pdf.text(line, margin, yPosition);
+                    yPosition += 5;
+                });
+
+                yPosition += 10;
+            }
+
+            if (msg.data.final.citations && msg.data.final.citations.length > 0) {
+                if (yPosition + 20 > pageHeight - margin) {
+                    pdf.addPage();
+                    yPosition = margin;
+                }
+
+                pdf.setFontSize(14);
+                pdf.setTextColor(0, 0, 0);
+                pdf.text('Sources & References', margin, yPosition);
+                yPosition += 8;
+
+                msg.data.final.citations.forEach((citation: { source: string; snippet?: string }, idx: number) => {
+                    if (yPosition + 15 > pageHeight - margin) {
+                        pdf.addPage();
+                        yPosition = margin;
+                    }
+
+                    pdf.setFontSize(10);
+                    pdf.setTextColor(0, 0, 255);
+                    const sourceText = `[${idx + 1}] ${citation.source}`;
+                    pdf.textWithLink(sourceText, margin, yPosition, { url: citation.source });
+                    yPosition += 5;
+
+                    if (citation.snippet) {
+                        pdf.setFontSize(9);
+                        pdf.setTextColor(100, 100, 100);
+                        const snippet = citation.snippet.substring(0, 150) + '...';
+                        const splitSnippet = pdf.splitTextToSize(snippet, pageWidth - (margin * 2) - 10);
+                        pdf.text(splitSnippet, margin + 5, yPosition);
+                        yPosition += (splitSnippet.length * 4) + 5;
+                    }
+                });
+                yPosition += 10;
+            }
+
+            yPosition += 10;
+            if (yPosition > pageHeight - margin) {
+                pdf.addPage();
+                yPosition = margin;
+            }
         }
-
-        // Citation Number Badge
-        pdf.setFillColor(219, 234, 254); // Blue-100
-        pdf.circle(margin + 4, yPosition - 1, 4, 'F');
-
-        pdf.setFontSize(9);
-        pdf.setTextColor(30, 58, 138); // Blue-900
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(`${idx + 1}`, margin + 2.5, yPosition);
-
-        // URL
-        pdf.setFontSize(10);
-        pdf.setTextColor(37, 99, 235); // Blue-600
-        pdf.setFont('helvetica', 'normal');
-        const urlLines = pdf.splitTextToSize(citation.source, contentWidth - 20);
-        pdf.text(urlLines, margin + 15, yPosition);
-        yPosition += (urlLines.length * 5) + 2;
-
-        // Snippet
-        pdf.setFontSize(9);
-        pdf.setTextColor(100, 116, 139); // Slate-500
-        pdf.setFont('helvetica', 'italic');
-        const snippetLines = pdf.splitTextToSize(`"${citation.snippet}"`, contentWidth - 20);
-        pdf.text(snippetLines, margin + 15, yPosition);
-        yPosition += (snippetLines.length * 5) + 10; // Extra spacing between citations
     });
 
-    // --- Footer ---
-    const totalPages = pdf.internal.pages.length - 1;
-    for (let i = 1; i <= totalPages; i++) {
+    const pageCount = pdf.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
         pdf.setPage(i);
 
-        // Footer Line
-        pdf.setDrawColor(226, 232, 240); // Slate-200
+        pdf.setDrawColor(226, 232, 240);
         pdf.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
 
         pdf.setFontSize(8);
-        pdf.setTextColor(148, 163, 184); // Slate-400
+        pdf.setTextColor(148, 163, 184);
         pdf.setFont('helvetica', 'normal');
-        pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+        pdf.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
         pdf.text('Research Agent', pageWidth - margin, pageHeight - 8, { align: 'right' });
     }
 
     return pdf;
 };
 
-export const exportJobToPdf = (job: JobState) => {
-    const pdf = generateJobPdf(job);
+export const exportJobToPdf = (job: Job, messages: Message[]) => {
+    const pdf = generateJobPdf(job, messages);
     if (!pdf) return;
-    const fileName = `research-${job.query.substring(0, 30).replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now()}.pdf`;
-    pdf.save(fileName);
+    pdf.save(`research-report-${job.jobId.slice(0, 8)}.pdf`);
 };
 
-export const getJobPdfBlobUrl = (job: JobState) => {
-    const pdf = generateJobPdf(job);
+export const getJobPdfBlobUrl = (job: Job, messages: Message[]) => {
+    const pdf = generateJobPdf(job, messages);
     if (!pdf) return null;
     return pdf.output('bloburl');
 };

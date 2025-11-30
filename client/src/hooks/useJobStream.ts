@@ -1,41 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { JobStatus } from '@/types';
+import { Job, Message } from '@/types';
 import { API_BASE_URL } from '@/lib/constants';
 
-export interface JobData {
-    plan?: {
-        sub_questions: string[];
-        search_queries: string[];
-        extraction_fields: string[];
-    };
-    search?: {
-        collectionName: string;
-        chunks: any[];
-    };
-    extraction?: {
-        facts: any[];
-    };
-    final?: {
-        summary: string;
-        detailed: string;
-        citations: any[];
-    };
-    error?: string;
-}
-
-export type JobState = JobStatus;
-
 export function useJobStream(jobId: string) {
-    const [job, setJob] = useState<JobState | null>(null);
+    const [job, setJob] = useState<Job | null>(null);
+    const [messages, setMessages] = useState<Message[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [isConnected, setIsConnected] = useState(false);
+    const isConnectingRef = useRef(false);
     const { getToken } = useAuth();
 
     useEffect(() => {
         let eventSource: EventSource | null = null;
 
         const connect = async () => {
+            if (isConnectingRef.current) {
+                console.log('[useJobStream] Already connecting, skipping...');
+                return;
+            }
+            isConnectingRef.current = true;
+
             try {
                 const token = await getToken();
 
@@ -46,15 +31,13 @@ export function useJobStream(jobId: string) {
                 });
 
                 if (jobResponse.ok) {
-                    const fullJob = await jobResponse.json();
-                    setJob({
-                        jobId: fullJob.jobId,
-                        userId: fullJob.userId,
-                        query: fullJob.query,
-                        createdAt: fullJob.createdAt,
-                        status: fullJob.status,
-                        data: fullJob.data || {}
-                    });
+                    const data = await jobResponse.json();
+                    setJob(data.job);
+                    setMessages(data.messages);
+                } else {
+                    setError('Failed to fetch job');
+                    isConnectingRef.current = false;
+                    return;
                 }
 
                 const { EventSourcePolyfill } = await import('event-source-polyfill');
@@ -64,9 +47,10 @@ export function useJobStream(jobId: string) {
                         Authorization: `Bearer ${token}`
                     },
                     heartbeatTimeout: 300000,
-                } as any);
+                } as object);
 
                 eventSource.onopen = () => {
+                    console.log('[useJobStream] SSE connection opened');
                     setIsConnected(true);
                     setError(null);
                 };
@@ -75,84 +59,88 @@ export function useJobStream(jobId: string) {
                     try {
                         const data = JSON.parse(event.data);
 
-                        if (data.type === 'stream' && data.chunk) {
-                            setJob(prev => {
-                                if (!prev) return prev;
-                                return {
-                                    ...prev,
-                                    data: {
-                                        ...prev.data,
-                                        final: {
-                                            summary: prev.data.final?.summary || '',
-                                            detailed: (prev.data.final?.detailed || '') + data.chunk,
-                                            citations: prev.data.final?.citations || []
-                                        }
-                                    }
-                                };
-                            });
+                        if (data.type === 'init') {
+                            setJob(data.job);
+                            setMessages(data.messages);
                             return;
                         }
 
-                        setJob(prev => {
-                            if (!prev) {
-                                return {
-                                    jobId,
-                                    userId: '',
-                                    query: '',
-                                    createdAt: Date.now(),
-                                    status: data.status,
-                                    data: data.data || {}
-                                };
-                            }
+                        if (data.jobId && data.messageId) {
+                            setMessages(prev => {
+                                const existingIndex = prev.findIndex(m => m.messageId === data.messageId);
+                                if (existingIndex === -1) {
+                                    console.warn('[useJobStream] Message not found for update:', data.messageId, 'Available messages:', prev.map(m => m.messageId));
+                                    return prev;
+                                }
 
-                            const newState = {
-                                ...prev,
-                                query: prev.query,
-                                ...prev.createdAt && { createdAt: prev.createdAt }
-                            };
+                                const newMessages = [...prev];
+                                const msg = newMessages[existingIndex];
 
-                            if (data.status) newState.status = data.status;
+                                if (data.type === 'stream' && data.chunk) {
+                                    console.log('[useJobStream] Received chunk:', data.chunk);
+                                    console.log('[useJobStream] Current detailed:', msg.data.final?.detailed);
 
-                            if (data.data) {
-                                if (data.status === 'planning' && data.step === 'complete') {
-                                    newState.data = { ...newState.data, plan: data.data };
-                                }
-                                if (data.status === 'searching' && data.step === 'complete') {
-                                    newState.data = { ...newState.data, search: data.data };
-                                }
-                                if (data.status === 'extracting' && data.step === 'complete') {
-                                    newState.data = { ...newState.data, extraction: data.data };
-                                }
-                                if (data.status === 'compiling' && data.step === 'complete') {
-                                    newState.data = { ...newState.data, final: data.data };
-                                }
-                                if (data.status === 'done') {
-                                    newState.data = data.data;
-                                }
-                                if (data.error) {
-                                    newState.data = { ...newState.data, error: data.error };
-                                }
-                            }
+                                    newMessages[existingIndex] = {
+                                        ...msg,
+                                        data: {
+                                            ...msg.data,
+                                            final: {
+                                                summary: msg.data.final?.summary || '',
+                                                detailed: (msg.data.final?.detailed || '') + data.chunk,
+                                                citations: msg.data.final?.citations || []
+                                            }
+                                        }
+                                    };
 
-                            return newState;
-                        });
+                                    console.log('[useJobStream] New detailed:', newMessages[existingIndex].data.final!.detailed);
+                                    console.log('[useJobStream] Returning new messages array, length:', newMessages.length);
+                                    return newMessages;
+                                }
 
-                        if (data.status === 'done' || data.status === 'error') {
-                            eventSource?.close();
-                            setIsConnected(false);
+                                const updatedMsg = { ...msg };
+                                if (data.status) updatedMsg.status = data.status;
+
+                                if (data.data) {
+                                    if (data.status === 'planning' && data.step === 'complete') {
+                                        updatedMsg.data = { ...updatedMsg.data, plan: data.data };
+                                    }
+                                    if (data.status === 'searching' && data.step === 'complete') {
+                                        updatedMsg.data = { ...updatedMsg.data, search: data.data };
+                                    }
+                                    if (data.status === 'extracting' && data.step === 'complete') {
+                                        updatedMsg.data = { ...updatedMsg.data, extraction: data.data };
+                                    }
+                                    if (data.status === 'compiling' && data.step === 'complete') {
+                                        updatedMsg.data = { ...updatedMsg.data, final: data.data };
+                                    }
+                                    if (data.status === 'done') {
+                                        // Merge final data
+                                        updatedMsg.data = { ...updatedMsg.data, ...data.data };
+                                    }
+                                    if (data.error) {
+                                        updatedMsg.data = { ...updatedMsg.data, error: data.error };
+                                    }
+                                }
+
+                                newMessages[existingIndex] = updatedMsg;
+                                return newMessages;
+                            });
                         }
+
                     } catch (err) {
                         console.error('Error parsing SSE data:', err);
                     }
                 };
 
-                eventSource.onerror = (err) => {
+                eventSource.onerror = (_err) => {
+                    console.log('[useJobStream] SSE error');
                     setIsConnected(false);
                 };
 
             } catch (err) {
                 console.error('Failed to initialize EventSource:', err);
                 setError('Failed to connect to stream');
+                isConnectingRef.current = false;
             }
         };
 
@@ -161,11 +149,15 @@ export function useJobStream(jobId: string) {
         }
 
         return () => {
+            console.log('[useJobStream] Cleanup: closing SSE connection');
             if (eventSource) {
                 eventSource.close();
             }
+            setTimeout(() => {
+                isConnectingRef.current = false;
+            }, 100);
         };
-    }, [jobId, getToken]);
+    }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    return { job, error, isConnected };
+    return { job, messages, error, isConnected };
 }

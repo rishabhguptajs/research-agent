@@ -42,17 +42,27 @@ export function useLatency() {
   }, []);
 
   useEffect(() => {
-    measureLatency();
-    const interval = setInterval(measureLatency, 60000);
-    return () => clearInterval(interval);
+    let mounted = true;
+
+    const runMeasurement = async () => {
+      if (mounted) await measureLatency();
+    };
+
+    runMeasurement();
+    const interval = setInterval(runMeasurement, 60000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, [measureLatency]);
 
   const getLatencyColor = useCallback(() => {
     if (state.status === 'offline') return 'text-red-500';
     if (!state.latency) return 'text-muted-foreground';
 
-    if (state.latency < 50) return 'text-green-500'; 
-    if (state.latency < 100) return 'text-yellow-500'; 
+    if (state.latency < 50) return 'text-green-500';
+    if (state.latency < 100) return 'text-yellow-500';
     if (state.latency < 200) return 'text-orange-500';
     return 'text-red-500';
   }, [state.latency, state.status]);

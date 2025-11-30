@@ -6,10 +6,6 @@ export type ResearchMode = 'chat' | 'research';
 
 const STORAGE_KEY = 'research-mode-preference';
 
-/**
- * Custom hook to manage research mode preference with localStorage persistence
- * Syncs mode across all components and persists across browser sessions
- */
 export function useModePreference(defaultMode: ResearchMode = 'research') {
     const [mode, setModeState] = useState<ResearchMode>(defaultMode);
     const [isInitialized, setIsInitialized] = useState(false);
