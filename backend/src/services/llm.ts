@@ -57,7 +57,6 @@ export async function generateJSON<T>(request: LLMRequest): Promise<T> {
         });
 
         const content = completion.choices[0].message.content;
-        console.log('LLM Raw Response:', content); // Debug logging
         if (!content) {
             throw new Error('LLM returned empty content');
         }
@@ -69,7 +68,6 @@ export async function generateJSON<T>(request: LLMRequest): Promise<T> {
             throw new Error('LLM response was not valid JSON');
         }
     } catch (error: any) {
-        // Check if it's a 429 rate limit error and fallback is available
         if (error?.status === 429 && fallbackClient) {
             console.warn('⚠️ Primary API hit rate limit (429). Falling back to OpenRouter...');
 
