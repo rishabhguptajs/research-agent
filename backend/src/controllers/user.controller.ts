@@ -15,7 +15,7 @@ function validateProvider(provider: string): provider is ApiProvider {
 
 export class UserController {
     static async getKeyStatus(req: Request, res: Response) {
-        const userId = (req as any).auth.userId;
+        const userId = (req as any).auth().userId;
         const { provider } = req.params;
 
         if (!validateProvider(provider)) {
@@ -33,7 +33,7 @@ export class UserController {
     }
 
     static async saveKey(req: Request, res: Response) {
-        const userId = (req as any).auth.userId;
+        const userId = (req as any).auth().userId;
         const { provider } = req.params;
         const { key } = req.body;
 
@@ -63,7 +63,7 @@ export class UserController {
     }
 
     static async deleteKey(req: Request, res: Response) {
-        const userId = (req as any).auth.userId;
+        const userId = (req as any).auth().userId;
         const { provider } = req.params;
 
         if (!validateProvider(provider)) {
