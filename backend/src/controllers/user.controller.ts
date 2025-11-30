@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { User } from '../models/User';
-import { encrypt } from '../services/crypto';
+import { encrypt, decryptClientEncryptedKey } from '../services/crypto';
 
 type ApiProvider = 'openrouter' | 'tavily';
 
@@ -35,18 +35,26 @@ export class UserController {
     static async saveKey(req: Request, res: Response) {
         const userId = (req as any).auth().userId;
         const { provider } = req.params;
-        const { key } = req.body;
+        const { apiKey } = req.body;
 
         if (!validateProvider(provider)) {
             return res.status(400).json({ error: 'Invalid provider. Must be "openrouter" or "tavily"' });
         }
 
-        if (!key) {
-            return res.status(400).json({ error: 'Key is required' });
+        if (!apiKey) {
+            return res.status(400).json({ error: 'API key is required' });
+        }
+
+        let apiKeyToEncrypt: string;
+        try {
+            apiKeyToEncrypt = decryptClientEncryptedKey(apiKey);
+        } catch (error) {
+            console.error('Failed to decrypt client-encrypted API key:', error);
+            return res.status(400).json({ error: 'Invalid encrypted API key' });
         }
 
         try {
-            const encryptedKey = encrypt(key);
+            const encryptedKey = encrypt(apiKeyToEncrypt);
             const field = PROVIDER_FIELD_MAP[provider];
 
             await User.findOneAndUpdate(
