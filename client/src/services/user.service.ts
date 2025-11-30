@@ -1,4 +1,5 @@
 import api from "@/lib/api";
+import { encryptApiKey } from "@/lib/utils";
 
 export const checkApiKeys = async (token: string) => {
     const [openRouterResponse, tavilyResponse] = await Promise.all([
@@ -16,9 +17,11 @@ export const checkApiKeys = async (token: string) => {
 };
 
 export const saveApiKey = async (token: string, provider: 'openrouter' | 'tavily', apiKey: string) => {
+    const encryptedKey = await encryptApiKey(apiKey);
+
     const response = await api.post(
         `/user/key/${provider}`,
-        { apiKey },
+        { apiKey: encryptedKey },
         {
             headers: { Authorization: `Bearer ${token}` },
         }

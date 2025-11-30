@@ -10,6 +10,7 @@ import ApiKeyModal from "@/components/ApiKeyModal";
 import { useDashboard } from "@/hooks/useDashboard";
 import { JobCard } from "@/components/dashboard/JobCard";
 import { Modal } from "@/components/ui/Modal";
+import { Loader } from "@/components/ui/Loader";
 
 export default function Dashboard() {
     const {
@@ -46,14 +47,7 @@ export default function Dashboard() {
     };
 
     if (!isLoaded || (isLoaded && !isSignedIn)) {
-        return (
-            <div className="min-h-screen bg-background flex items-center justify-center">
-                <div className="text-center space-y-4">
-                    <div className="w-12 h-12 border-2 border-primary border-t-transparent rounded-none animate-spin mx-auto"></div>
-                    <p className="text-sm text-muted-foreground font-mono">VERIFYING_ACCESS...</p>
-                </div>
-            </div>
-        );
+        return <Loader fullScreen text="VERIFYING_ACCESS..." />;
     }
 
     return (
@@ -143,8 +137,8 @@ export default function Dashboard() {
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {isLoading ? (
-                    <div className="col-span-full text-center py-12 text-muted-foreground font-mono animate-pulse">
-                        LOADING_ARCHIVES...
+                    <div className="col-span-full py-12 flex justify-center">
+                        <Loader text="LOADING_ARCHIVES..." />
                     </div>
                 ) : jobs.length === 0 ? (
                     <div className="col-span-full text-center py-12 border border-dashed border-border rounded-sm bg-secondary/20">

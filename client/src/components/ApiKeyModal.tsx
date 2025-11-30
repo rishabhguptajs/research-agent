@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@clerk/nextjs";
 import { API_BASE_URL } from "@/lib/constants";
+import { useSaveApiKey, useDeleteApiKey } from "@/hooks/useApiKeys";
 
 interface ApiKeyModalProps {
     isOpen: boolean;
@@ -20,8 +21,12 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
     const [tavilyKey, setTavilyKey] = useState("");
     const [hasOpenRouterKey, setHasOpenRouterKey] = useState(false);
     const [hasTavilyKey, setHasTavilyKey] = useState(false);
-    const [loading, setLoading] = useState<Provider | null>(null);
     const { getToken } = useAuth();
+
+    const saveApiKeyMutation = useSaveApiKey();
+    const deleteApiKeyMutation = useDeleteApiKey();
+
+    const isLoading = saveApiKeyMutation.isPending || deleteApiKeyMutation.isPending;
 
     useEffect(() => {
         if (isOpen) {
@@ -52,17 +57,8 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
         const key = provider === 'openrouter' ? openRouterKey : tavilyKey;
         if (!key) return;
 
-        setLoading(provider);
         try {
-            const token = await getToken();
-            await fetch(`${API_BASE_URL}/user/key/${provider}`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ key }),
-            });
+            await saveApiKeyMutation.mutateAsync({ provider, apiKey: key });
 
             if (provider === 'openrouter') {
                 setHasOpenRouterKey(true);
@@ -76,8 +72,6 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
         } catch (error) {
             console.error(`Failed to save ${provider} key:`, error);
             alert("Failed to save key.");
-        } finally {
-            setLoading(null);
         }
     };
 
@@ -85,13 +79,8 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
         const providerName = provider === 'openrouter' ? 'OpenRouter' : 'Tavily';
         if (!confirm(`Are you sure you want to remove your ${providerName} API key?`)) return;
 
-        setLoading(provider);
         try {
-            const token = await getToken();
-            await fetch(`${API_BASE_URL}/user/key/${provider}`, {
-                method: "DELETE",
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            await deleteApiKeyMutation.mutateAsync(provider);
 
             if (provider === 'openrouter') {
                 setHasOpenRouterKey(false);
@@ -103,8 +92,6 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
         } catch (error) {
             console.error(`Failed to delete ${provider} key:`, error);
             alert("Failed to delete key.");
-        } finally {
-            setLoading(null);
         }
     };
 
@@ -145,7 +132,7 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
                                     variant="destructive"
                                     size="sm"
                                     onClick={() => handleDelete('openrouter')}
-                                    disabled={loading !== null}
+                                    disabled={isLoading}
                                 >
                                     Remove
                                 </Button>
@@ -153,9 +140,9 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
                             <Button
                                 size="sm"
                                 onClick={() => handleSave('openrouter')}
-                                disabled={loading !== null || !openRouterKey}
+                                disabled={isLoading || !openRouterKey}
                             >
-                                {loading === 'openrouter' ? "Saving..." : "Save"}
+                                {saveApiKeyMutation.isPending ? "Saving..." : "Save"}
                             </Button>
                         </div>
                     </div>
@@ -186,7 +173,7 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
                                     variant="destructive"
                                     size="sm"
                                     onClick={() => handleDelete('tavily')}
-                                    disabled={loading !== null}
+                                    disabled={isLoading}
                                 >
                                     Remove
                                 </Button>
@@ -194,9 +181,9 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
                             <Button
                                 size="sm"
                                 onClick={() => handleSave('tavily')}
-                                disabled={loading !== null || !tavilyKey}
+                                disabled={isLoading || !tavilyKey}
                             >
-                                {loading === 'tavily' ? "Saving..." : "Save"}
+                                {saveApiKeyMutation.isPending ? "Saving..." : "Save"}
                             </Button>
                         </div>
                     </div>
