@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { CheckCircle2, Circle, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { JobState } from "@/hooks/useJobStream";
+import { Message } from "@/types";
 
 const STEPS = [
     { id: 'planning', label: 'Planning Research' },
@@ -10,14 +10,13 @@ const STEPS = [
     { id: 'compiling', label: 'Compiling Report' },
 ];
 
-export default function JobStatus({ job }: { job: JobState }) {
+export default function JobStatus({ job }: { job: Message }) {
     const currentStepIndex = STEPS.findIndex(s => s.id === job.status);
     const isDone = job.status === 'done';
     const isError = job.status === 'error';
 
     return (
         <div className="w-full space-y-8">
-            {/* Status Badge */}
             <div className="flex items-center justify-between border-b border-border pb-4">
                 <div className="flex items-center gap-2">
                     <div className={cn(
@@ -33,7 +32,6 @@ export default function JobStatus({ job }: { job: JobState }) {
                 </div>
             </div>
 
-            {/* Stepper */}
             <div className="relative">
                 <div className="absolute left-3 top-0 bottom-0 w-px bg-border"></div>
                 <div className="space-y-8">
@@ -66,14 +64,13 @@ export default function JobStatus({ job }: { job: JobState }) {
                                         {step.label}
                                     </h3>
 
-                                    {/* Step Details (Collapsible or visible when active) */}
                                     {isActive && (
                                         <motion.div
                                             initial={{ opacity: 0, height: 0 }}
                                             animate={{ opacity: 1, height: 'auto' }}
                                             className="mt-2 text-xs text-muted-foreground font-mono bg-secondary/50 p-2 border border-border rounded-sm"
                                         >
-                                            <span className="animate-pulse">Processing...</span>
+                                            <span className="animate-pulse">Researching...</span>
                                         </motion.div>
                                     )}
                                 </div>
@@ -83,7 +80,6 @@ export default function JobStatus({ job }: { job: JobState }) {
                 </div>
             </div>
 
-            {/* Error Display */}
             {isError && (
                 <div className="p-4 border border-red-500/50 bg-red-500/10 rounded-sm flex items-start gap-3 text-red-400">
                     <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />

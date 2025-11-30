@@ -11,10 +11,8 @@ export default function Home() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-24 relative overflow-hidden">
-      {/* Background Grid */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
 
-      {/* Header / Nav */}
       <header className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-10">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 bg-primary"></div>
@@ -50,7 +48,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero Section */}
       <div className="z-10 w-full max-w-4xl flex flex-col items-center gap-8 text-center">
         <div className="space-y-4">
           <h1 className="text-5xl md:text-7xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white to-white/50">
@@ -72,7 +69,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Footer Status */}
       <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-background/50 backdrop-blur-sm flex justify-between items-center text-[10px] text-muted-foreground font-mono uppercase">
         <div className="flex gap-4">
           <span className="flex items-center gap-1">

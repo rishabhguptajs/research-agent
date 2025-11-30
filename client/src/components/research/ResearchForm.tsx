@@ -37,11 +37,11 @@ export default function ResearchForm() {
             />
 
             <div className={`flex justify-center gap-4 text-xs text-muted-foreground font-mono ${isMobile ? 'flex-col items-center gap-2' : ''}`}>
-                <span>Try: "Solid state batteries"</span>
+                <span>Try: &quot;Solid state batteries&quot;</span>
                 {!isMobile && <span>•</span>}
-                <span>"Generative AI in Healthcare"</span>
+                <span>&quot;Generative AI in Healthcare&quot;</span>
                 {!isMobile && <span>•</span>}
-                <span>"Quantum Computing 2024"</span>
+                <span>&quot;Quantum Computing 2024&quot;</span>
             </div>
         </div>
     );

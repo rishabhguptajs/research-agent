@@ -1,10 +1,10 @@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Clock, Trash2 } from "lucide-react";
-import { JobStatus } from "@/types";
+import { Job } from "@/types";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
-export function JobCard({ job, onDelete }: { job: JobStatus; onDelete: (jobId: string) => void }) {
+export function JobCard({ job, onDelete }: { job: Job; onDelete: (jobId: string) => void }) {
     const router = useRouter();
 
     const handleDelete = (e: React.MouseEvent) => {
@@ -24,9 +24,9 @@ export function JobCard({ job, onDelete }: { job: JobStatus; onDelete: (jobId: s
                             'bg-blue-500 animate-pulse'
                         }`} />
                     <div className="flex-1 pr-8">
-                        <CardTitle className="text-sm font-semibold line-clamp-2 mb-1">
-                            {job.query}
-                        </CardTitle>
+                        <h3 className="font-medium text-foreground truncate pr-8">
+                            {job.title}
+                        </h3>
                         <CardDescription className="font-mono text-xs">
                             ID: {job.jobId.slice(0, 8)}
                         </CardDescription>

@@ -1,4 +1,4 @@
-import { JobStatus } from "@/types";
+import { Message } from "@/types";
 import ReportView from "./ReportView";
 import { useMobile } from "@/hooks/use-mobile";
 import { Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
@@ -12,8 +12,8 @@ const getStatusIcon = (status: string) => {
     }
 };
 
-const getStatusText = (job: JobStatus) => {
-    switch (job.status) {
+const getStatusText = (message: Message) => {
+    switch (message.status) {
         case 'planning':
         case 'searching':
         case 'extracting':
@@ -29,24 +29,23 @@ const getStatusText = (job: JobStatus) => {
 };
 
 interface JobMessageProps {
-    job: JobStatus;
+    message: Message;
     userImageUrl?: string;
     isLast?: boolean;
 }
 
-export function JobMessage({ job, userImageUrl, isLast }: JobMessageProps) {
+export function JobMessage({ message, userImageUrl, isLast }: JobMessageProps) {
     const isMobile = useMobile();
-    const formattedDate = new Date(job.createdAt).toLocaleString('en-US', {
+    const formattedDate = new Date(message.createdAt).toLocaleString('en-US', {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
     });
 
-    return (
-        <div className="space-y-4">
-            {/* User Query */}
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+    if (message.role === 'user') {
+        return (
+            <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-accent to-accent/60 flex items-center justify-center overflow-hidden">
                         {userImageUrl ? (
@@ -57,74 +56,79 @@ export function JobMessage({ job, userImageUrl, isLast }: JobMessageProps) {
                     </div>
                     <div className="flex-1 min-w-0">
                         <div className={`text-foreground font-medium ${isMobile ? 'text-base' : 'text-lg'}`}>
-                            {job.query}
+                            {message.content}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">{formattedDate}</div>
                     </div>
                 </div>
             </div>
+        );
+    }
 
-            {/* Assistant Response */}
-            <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
-                <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-sm font-medium text-primary-foreground shadow-lg">
-                        AI
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        {/* Status Indicator */}
-                        {job.status !== 'done' && job.status !== 'error' && (
-                            <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
-                                {getStatusIcon(job.status)}
-                                <span>{getStatusText(job)}<AnimatedDots /></span>
-                            </div>
-                        )}
+    return (
+        <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
+            <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-sm font-medium text-primary-foreground shadow-lg">
+                    AI
+                </div>
+                <div className="flex-1 min-w-0">
+                    {message.status !== 'done' && message.status !== 'error' && (
+                        <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
+                            {getStatusIcon(message.status || 'planning')}
+                            <span>{getStatusText(message)}<AnimatedDots /></span>
+                        </div>
+                    )}
 
-                        {/* Report Content */}
-                        {job.data.final ? (
+                    {message.type === 'chat' ? (
+                        <div
+                            key={`chat-${message.messageId}-${message.data?.final?.detailed?.length || 0}`}
+                            className="prose prose-sm dark:prose-invert max-w-none"
+                        >
+                            {message.data?.final?.detailed || message.content}
+                        </div>
+                    ) : (
+                        message.data?.final ? (
                             <div className="relative">
-                                <ReportView data={job.data.final} />
-                                {/* Streaming cursor - show when job is still processing but has content */}
-                                {(job.status === 'compiling' || job.status === 'planning') && job.data.final.detailed && (
+                                <ReportView data={message.data.final} />
+                                {(message.status === 'compiling' || message.status === 'planning') && message.data.final.detailed && (
                                     <span className="inline-block w-2 h-4 ml-2 bg-primary animate-pulse"></span>
                                 )}
                             </div>
                         ) : (
                             <div className="space-y-3">
-                                {/* Progress indicators as chat bubbles */}
-                                {job.data.plan && (
+                                {message.data?.plan && (
                                     <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
                                         <div className="flex items-center gap-2 mb-1">
                                             <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                            <span>Research plan created with {job.data.plan.search_queries?.length} search queries</span>
+                                            <span>Research plan created with {message.data.plan.search_queries?.length} search queries</span>
                                         </div>
                                     </div>
                                 )}
-                                {job.data.search && (
+                                {message.data?.search && (
                                     <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
                                         <div className="flex items-center gap-2 mb-1">
                                             <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                            <span>Found {job.data.search.chunks?.length} relevant sources</span>
+                                            <span>Found {message.data.search.chunks?.length} relevant sources</span>
                                         </div>
                                     </div>
                                 )}
-                                {job.data.extraction && (
+                                {message.data?.extraction && (
                                     <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-300">
                                         <div className="flex items-center gap-2 mb-1">
                                             <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                            <span>Extracted {job.data.extraction.facts?.length} key insights</span>
+                                            <span>Extracted {message.data.extraction.facts?.length} key insights</span>
                                         </div>
                                     </div>
                                 )}
                             </div>
-                        )}
+                        )
+                    )}
 
-                        {/* Error state */}
-                        {job.status === 'error' && job.data.error && (
-                            <div className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
-                                {job.data.error}
-                            </div>
-                        )}
-                    </div>
+                    {message.status === 'error' && message.data?.error && (
+                        <div className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
+                            {message.data.error}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

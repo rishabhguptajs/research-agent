@@ -63,7 +63,7 @@ export default function SourcesModal({ citations }: SourcesModalProps) {
                                             {citation.source}
                                         </p>
                                         <p className="text-sm text-foreground/70 line-clamp-3">
-                                            "{citation.snippet}"
+                                            &quot;{citation.snippet}&quot;
                                         </p>
                                     </div>
                                 </div>

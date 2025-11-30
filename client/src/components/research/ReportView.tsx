@@ -5,13 +5,8 @@ import SourcesModal from './SourcesModal';
 import { useMobile } from "@/hooks/use-mobile";
 import { CitationBadge } from './CitationBadge';
 
-interface Citation {
-    source: string;
-    snippet: string;
-}
-
 export default function ReportView({ data }: { data: JobData['final'] }) {
-    const [hoveredCitation, setHoveredCitation] = useState<number | null>(null);
+    const isMobile = useMobile();
 
     if (!data) return null;
 
@@ -35,8 +30,7 @@ export default function ReportView({ data }: { data: JobData['final'] }) {
         });
     };
 
-    // Recursively process children to handle nested content
-    const processChildren = (children: any): any => {
+    const processChildren = (children: React.ReactNode): React.ReactNode => {
         if (typeof children === 'string') {
             return processTextWithCitations(children);
         }
@@ -51,44 +45,43 @@ export default function ReportView({ data }: { data: JobData['final'] }) {
         return children;
     };
 
-    const isMobile = useMobile();
 
-    // Custom markdown components with inline citation support
+
     const components = {
-        p: ({ node, children, ...props }: any) => (
+        p: ({ children, ...props }: React.ComponentPropsWithoutRef<'p'> & { node?: unknown }) => (
             <p className={`leading-7 text-foreground/90 mb-4 ${isMobile ? 'text-sm' : 'text-base'}`} {...props}>
                 {processChildren(children)}
             </p>
         ),
-        h2: ({ node, children, ...props }: any) => (
+        h2: ({ children, ...props }: React.ComponentPropsWithoutRef<'h2'> & { node?: unknown }) => (
             <h2 className={`font-bold tracking-tight mt-10 mb-4 text-foreground ${isMobile ? 'text-xl' : 'text-2xl'}`} {...props}>
                 {processChildren(children)}
             </h2>
         ),
-        h3: ({ node, children, ...props }: any) => (
+        h3: ({ children, ...props }: React.ComponentPropsWithoutRef<'h3'> & { node?: unknown }) => (
             <h3 className={`font-semibold tracking-tight mt-8 mb-3 text-foreground ${isMobile ? 'text-lg' : 'text-xl'}`} {...props}>
                 {processChildren(children)}
             </h3>
         ),
-        ul: ({ node, ...props }: any) => (
+        ul: ({ ...props }: React.ComponentPropsWithoutRef<'ul'> & { node?: unknown }) => (
             <ul className="my-4 ml-6 space-y-2 list-disc marker:text-primary" {...props} />
         ),
-        li: ({ node, children, ...props }: any) => (
+        li: ({ children, ...props }: React.ComponentPropsWithoutRef<'li'> & { node?: unknown }) => (
             <li className={`text-foreground/90 leading-7 ${isMobile ? 'text-sm' : 'text-base'}`} {...props}>
                 {processChildren(children)}
             </li>
         ),
-        strong: ({ node, children, ...props }: any) => (
+        strong: ({ children, ...props }: React.ComponentPropsWithoutRef<'strong'> & { node?: unknown }) => (
             <strong className="font-semibold text-foreground" {...props}>
                 {processChildren(children)}
             </strong>
         ),
-        em: ({ node, children, ...props }: any) => (
+        em: ({ children, ...props }: React.ComponentPropsWithoutRef<'em'> & { node?: unknown }) => (
             <em className="italic text-foreground/80" {...props}>
                 {processChildren(children)}
             </em>
         ),
-        code: ({ node, inline, children, ...props }: any) => (
+        code: ({ inline, children, ...props }: React.ComponentPropsWithoutRef<'code'> & { node?: unknown, inline?: boolean }) => (
             inline ?
                 <code className="px-1.5 py-0.5 rounded bg-muted font-mono text-sm" {...props}>
                     {children}
@@ -101,7 +94,6 @@ export default function ReportView({ data }: { data: JobData['final'] }) {
 
     return (
         <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {/* Executive Summary - Premium amber style */}
             {data.summary && (
                 <div className={`mb-8 rounded-xl bg-gradient-to-br from-amber-500/5 to-orange-500/5 border border-amber-500/20 ${isMobile ? 'p-4' : 'p-6'}`}>
                     <div className={`leading-7 text-foreground/90 ${isMobile ? 'text-sm' : 'text-base'}`}>
@@ -110,7 +102,6 @@ export default function ReportView({ data }: { data: JobData['final'] }) {
                 </div>
             )}
 
-            {/* Detailed Report with inline citations */}
             {data.detailed && (
                 <div className="prose-none">
                     <ReactMarkdown components={components}>
@@ -119,7 +110,6 @@ export default function ReportView({ data }: { data: JobData['final'] }) {
                 </div>
             )}
 
-            {/* Sources modal - compact */}
             {data.citations && data.citations.length > 0 && (
                 <div className="mt-12 pt-8 border-t border-border">
                     <SourcesModal citations={data.citations} />
