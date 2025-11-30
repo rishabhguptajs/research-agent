@@ -47,7 +47,6 @@ export async function runExtractor(subQuestions: string[], collectionName: strin
                 apiKey
             });
 
-            // Map titles from search results to facts
             const factsWithTitles = result.facts.map(fact => {
                 const matchingResult = searchResults.find((r: any) => r.payload.source === fact.source);
                 return {

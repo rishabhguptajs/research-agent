@@ -1,12 +1,13 @@
 import { Request, Response } from 'express';
-import { createJob, getJob, getJobs, jobEmitter } from '../orchestrator/job';
+import { createJob, addMessage, getJob, getJobs, jobEmitter } from '../orchestrator/job';
 import { User } from '../models/User';
+import { Job } from '../models/Job';
 
 const activeConnections = new Map<string, Response<any, Record<string, any>>>();
 
 export class JobController {
     static async createJob(req: Request, res: Response) {
-        const { query, parentJobId, type } = req.body;
+        const { query, type } = req.body;
         const userId = (req as any).auth.userId;
 
         if (!query) {
@@ -38,15 +39,20 @@ export class JobController {
             return res.status(500).json({ error: 'Internal server error' });
         }
 
-        const jobId = await createJob(query, userId, parentJobId, type);
+        const jobId = await createJob(query, userId, type);
         res.status(201).json({ jobId });
     }
 
-    static async getJobThread(req: Request, res: Response) {
+    static async addMessage(req: Request, res: Response) {
         const { id } = req.params;
+        const { message, type } = req.body;
         const userId = (req as any).auth.userId;
 
-        const job = await getJob(id);
+        if (!message) {
+            return res.status(400).json({ error: 'Message content is required' });
+        }
+
+        const job = await Job.findOne({ jobId: id });
         if (!job) {
             return res.status(404).json({ error: 'Job not found' });
         }
@@ -54,8 +60,8 @@ export class JobController {
             return res.status(403).json({ error: 'Forbidden: You do not own this job' });
         }
 
-        const thread = await import('../orchestrator/job').then(m => m.getJobThread(id));
-        res.json(thread);
+        const messageId = await addMessage(id, message, type);
+        res.status(201).json({ messageId });
     }
 
     static async getUserJobs(req: Request, res: Response) {
@@ -67,33 +73,34 @@ export class JobController {
     static async getJobById(req: Request, res: Response) {
         const { id } = req.params;
         const userId = (req as any).auth.userId;
-        const job = await getJob(id);
 
-        if (!job) {
+        const jobData = await getJob(id);
+
+        if (!jobData) {
             return res.status(404).json({ error: 'Job not found' });
         }
 
-        if (job.userId !== userId) {
+        if (jobData.job.userId !== userId) {
             return res.status(403).json({ error: 'Forbidden: You do not own this job' });
         }
 
-        res.json(job);
+        res.json(jobData);
     }
 
     static async streamJobUpdates(req: Request, res: Response) {
         const { id } = req.params;
         const userId = (req as any).auth.userId;
-        const job = await getJob(id);
 
-        if (!job) {
+        const jobData = await getJob(id);
+
+        if (!jobData) {
             return res.status(404).json({ error: 'Job not found' });
         }
 
-        if (job.userId !== userId) {
+        if (jobData.job.userId !== userId) {
             return res.status(403).json({ error: 'Forbidden: You do not own this job' });
         }
 
-        // Close existing connection for this job if one exists
         const existingConnection = activeConnections.get(id);
         if (existingConnection) {
             console.log(`[SSE ${id.slice(0, 8)}] Closing existing connection to prevent duplicates`);
@@ -101,7 +108,6 @@ export class JobController {
             activeConnections.delete(id);
         }
 
-        // Store this connection
         activeConnections.set(id, res);
         console.log(`[SSE ${id.slice(0, 8)}] New connection established. Active connections: ${activeConnections.size}`);
 
@@ -109,40 +115,30 @@ export class JobController {
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        res.write(`data: ${JSON.stringify({ status: job.status, data: job.data, query: job.query, createdAt: job.createdAt })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'init', job: jobData.job, messages: jobData.messages })}\n\n`);
+
+        jobEmitter.removeAllListeners('update');
 
         const onUpdate = (update: any) => {
             if (update.jobId === id) {
                 res.write(`data: ${JSON.stringify(update)}\n\n`);
-                if (update.status === 'done' || update.status === 'error') {
-                    res.end();
-                }
-            }
-        };
-
-        const onStream = (streamData: any) => {
-            if (streamData.jobId === id) {
-                console.log(`[SSE ${id.slice(0, 8)}] Stream chunk:`, streamData.chunk.substring(0, 30));
-                res.write(`data: ${JSON.stringify({ type: 'stream', chunk: streamData.chunk })}\n\n`);
             }
         };
 
         jobEmitter.on('update', onUpdate);
-        jobEmitter.on('stream', onStream);
 
         req.on('close', () => {
-            console.log(`[SSE ${id.slice(0, 8)}] Connection closed by client`);
             jobEmitter.off('update', onUpdate);
-            jobEmitter.off('stream', onStream);
             activeConnections.delete(id);
         });
     }
+
     static async deleteJob(req: Request, res: Response) {
         const { id } = req.params;
         const userId = (req as any).auth.userId;
 
         try {
-            const job = await getJob(id);
+            const job = await Job.findOne({ jobId: id });
 
             if (!job) {
                 return res.status(404).json({ error: 'Job not found' });
@@ -152,18 +148,10 @@ export class JobController {
                 return res.status(403).json({ error: 'Forbidden: You do not own this job' });
             }
 
-            const { Job } = await import('../models/Job');
             await Job.deleteOne({ jobId: id });
 
-            const { activeJobs } = await import('../orchestrator/job') as any; // Accessing internal cache if possible, or we might need to export a delete helper from orchestrator.
-            // Actually, orchestrator/job.ts doesn't export activeJobs or a delete function. 
-            // Let's check orchestrator/job.ts again. It has `delete activeJobs[jobId]` in timeouts.
-            // It's better to add a delete helper in orchestrator/job.ts to be clean, but for now, 
-            // since activeJobs is not exported, we can just rely on DB deletion. 
-            // If the job is active, it might still be running. 
-            // Ideally we should stop it, but that's complex. 
-            // For now, let's just delete from DB. The active job will eventually finish or fail and try to update DB, which might fail or succeed (if it upserts).
-            // Let's just stick to DB deletion for now as per requirements.
+            const { Message } = await import('../models/Message');
+            await Message.deleteMany({ jobId: id });
 
             res.json({ message: 'Job deleted successfully' });
         } catch (error) {

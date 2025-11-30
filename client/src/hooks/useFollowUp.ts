@@ -1,6 +1,6 @@
 import { useCreateJob } from './useJobs';
 
-export function useFollowUp(jobId: string, getToken: () => Promise<string | null>) {
+export function useFollowUp() {
     const createJobMutation = useCreateJob();
 
     const submitFollowUp = async (parentJobId: string, isDeepResearch: boolean, query: string) => {
@@ -13,10 +13,13 @@ export function useFollowUp(jobId: string, getToken: () => Promise<string | null
                 parentJobId,
                 type
             });
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to submit follow-up:', error);
-            if (error.response?.status === 403) {
-                alert('Please configure your API keys in the dashboard first');
+            if (error && typeof error === 'object' && 'response' in error) {
+                const err = error as { response: { status: number } };
+                if (err.response?.status === 403) {
+                    alert('Please configure your API keys in the dashboard first');
+                }
             }
         }
     };

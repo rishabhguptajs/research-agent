@@ -45,7 +45,6 @@ export default function Dashboard() {
         }
     };
 
-    // Show loading screen while checking auth
     if (!isLoaded || (isLoaded && !isSignedIn)) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
@@ -65,7 +64,7 @@ export default function Dashboard() {
                         variant="ghost"
                         size="icon"
                         onClick={() => router.push("/")}
-                        className="rounded-none hover:bg-accent"
+                        className="rounded-none hover:bg-accent cursor-pointer"
                     >
                         <ArrowLeft className="w-5 h-5" />
                     </Button>
@@ -74,7 +73,6 @@ export default function Dashboard() {
             </header>
 
             <div className="grid gap-6 md:grid-cols-4 mb-8">
-                {/* User Profile Card */}
                 <Card className="col-span-full md:col-span-1 border-primary/20 bg-primary/5">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-base">
@@ -92,7 +90,7 @@ export default function Dashboard() {
                         </div>
                         <Button
                             variant="outline"
-                            className="w-full gap-2 text-sm"
+                            className="w-full gap-2 text-sm cursor-pointer"
                             onClick={() => setIsSettingsOpen(true)}
                         >
                             <Key className="w-4 h-4" />
@@ -101,7 +99,6 @@ export default function Dashboard() {
                     </CardContent>
                 </Card>
 
-                {/* Stats Cards */}
                 <Card className="border-green-500/20 bg-green-500/5">
                     <CardHeader className="pb-2">
                         <CardDescription className="text-xs">Completed</CardDescription>
@@ -156,7 +153,7 @@ export default function Dashboard() {
                         <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
                             Start your first research task to see it appear in your archives.
                         </p>
-                        <Button onClick={() => router.push("/")} variant="premium">
+                        <Button onClick={() => router.push("/")} variant="premium" className="cursor-pointer">
                             Start New Research
                         </Button>
                     </div>

@@ -3,16 +3,25 @@ export interface ResearchQuery {
 }
 
 export type Job = JobStatus;
+export type Message = MessageStatus;
 
 export interface JobStatus {
     jobId: string;
     userId: string;
-    query: string;
+    title: string;
     createdAt: number;
-    status: 'planning' | 'searching' | 'extracting' | 'compiling' | 'done' | 'error';
-    parentJobId?: string;
+    status: 'active' | 'done' | 'error';
+}
+
+export interface MessageStatus {
+    messageId: string;
+    jobId: string;
+    role: 'user' | 'assistant';
+    content: string;
     type?: 'research' | 'chat';
+    status?: 'planning' | 'searching' | 'extracting' | 'compiling' | 'done' | 'error';
     data: JobData;
+    createdAt: number;
 }
 
 export interface JobData {

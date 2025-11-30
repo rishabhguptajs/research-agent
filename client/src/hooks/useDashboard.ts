@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { JobStatus } from "@/types";
+import { Job } from '@/types';
 import { getJobs, deleteJob } from "@/services/job.service";
 
 export function useDashboard() {
-    const [jobs, setJobs] = useState<JobStatus[]>([]);
+    const [jobs, setJobs] = useState<Job[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const router = useRouter();

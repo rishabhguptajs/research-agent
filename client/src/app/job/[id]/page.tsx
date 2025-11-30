@@ -7,40 +7,37 @@ import { useJobStream } from "@/hooks/useJobStream";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft, Loader2, XCircle } from "lucide-react";
-import { exportJobToPdf } from "@/utils/pdf-export";
-import { useJobThread } from "@/hooks/useJobThread";
-import { useFollowUp } from "@/hooks/useFollowUp";
+import { exportJobToPdf, getJobPdfBlobUrl } from "@/utils/pdf-export";
 import { JobMessage } from "@/components/research/JobMessage";
 import ChatInput from "@/components/research/ChatInput";
 import { useResearchForm } from "@/hooks/useResearchForm";
 import { Modal } from "@/components/ui/Modal";
-
-import { getJobPdfBlobUrl } from "@/utils/pdf-export";
+import { sendMessage } from "@/services/job.service";
 
 export default function JobPage() {
     const params = useParams();
     const router = useRouter();
     const jobId = params.id as string;
-    const { job: currentJob, error } = useJobStream(jobId);
+    const { job, messages, error, isConnected } = useJobStream(jobId);
     const { getToken } = useAuth();
     const { user } = useUser();
     const bottomRef = useRef<HTMLDivElement>(null);
-    const { thread, isLoadingThread } = useJobThread(jobId, getToken);
-    const { isSubmittingFollowUp, submitFollowUp } = useFollowUp(jobId, getToken);
-    // Re-using this hook to get key status for the chat input validation
+
     const { hasOpenRouterKey, hasTavilyKey, checkingKey, isSignedIn } = useResearchForm();
+
     const [showExportConfirm, setShowExportConfirm] = useState(false);
     const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         if (bottomRef.current) {
             bottomRef.current.scrollIntoView({ behavior: "smooth" });
         }
-    }, [currentJob, thread.length]);
+    }, [messages.length, job]);
 
     const handleExportPDF = () => {
-        if (currentJob && currentJob.data.final) {
-            const blobUrl = getJobPdfBlobUrl(currentJob);
+        if (job && messages.length > 0) {
+            const blobUrl = getJobPdfBlobUrl(job, messages);
             if (blobUrl) {
                 setPdfPreviewUrl(blobUrl.toString());
                 setShowExportConfirm(true);
@@ -49,8 +46,8 @@ export default function JobPage() {
     };
 
     const confirmExport = () => {
-        if (currentJob) {
-            exportJobToPdf(currentJob);
+        if (job && messages.length > 0) {
+            exportJobToPdf(job, messages);
             setShowExportConfirm(false);
             setPdfPreviewUrl(null);
         }
@@ -59,6 +56,21 @@ export default function JobPage() {
     const handleCloseExport = () => {
         setShowExportConfirm(false);
         setPdfPreviewUrl(null);
+    };
+
+    const handleSubmit = async (query: string, isDeepResearch: boolean) => {
+        if (!job) return;
+        setIsSubmitting(true);
+        try {
+            const token = await getToken();
+            if (!token) return;
+
+            await sendMessage(token, job.jobId, query, isDeepResearch ? 'research' : 'chat');
+        } catch (err) {
+            console.error("Failed to send message:", err);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     if (error) {
@@ -74,7 +86,7 @@ export default function JobPage() {
         );
     }
 
-    if (isLoadingThread) {
+    if (!job && !error) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center">
@@ -85,21 +97,14 @@ export default function JobPage() {
         );
     }
 
-    // Combine historical thread with current live job
-    const displayJobs = [...thread];
-    if (currentJob && displayJobs.length > 0 && displayJobs[displayJobs.length - 1].jobId === currentJob.jobId) {
-        displayJobs[displayJobs.length - 1] = currentJob;
-    } else if (currentJob) {
-        displayJobs.push(currentJob);
-    }
+    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+    const defaultMode = lastMessage?.type === 'chat' ? 'chat' : 'research';
 
     return (
         <div className="min-h-screen bg-background">
-            {/* Fixed Header */}
             <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
                     <div className="flex items-center justify-between">
-                        {/* Left - Home Button */}
                         <Button
                             variant="ghost"
                             size="sm"
@@ -110,13 +115,12 @@ export default function JobPage() {
                             Home
                         </Button>
 
-                        {/* Right - Export and Dashboard Buttons */}
                         <div className="flex items-center gap-2">
                             <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={handleExportPDF}
-                                disabled={!currentJob?.data.final || currentJob.status !== 'done'}
+                                disabled={!job || messages.length === 0 || job.status !== 'active'}
                                 className="hover:bg-amber-500/10 cursor-pointer hover:border-amber-500/40 hover:text-amber-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <svg
@@ -147,30 +151,27 @@ export default function JobPage() {
                 </div>
             </header>
 
-            {/* Chat-like Content */}
             <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-32">
-                {displayJobs.map((job, index) => (
+                {messages.map((msg, index) => (
                     <JobMessage
-                        key={job.jobId}
-                        job={job}
+                        key={`${msg.messageId}-${msg.data?.final?.detailed?.length || 0}`}
+                        message={msg}
                         userImageUrl={user?.imageUrl}
-                        isLast={index === displayJobs.length - 1}
+                        isLast={index === messages.length - 1}
                     />
                 ))}
 
-                {/* Auto-scroll anchor */}
                 <div ref={bottomRef} />
             </main>
 
-            {/* Fixed Chat Input at Bottom */}
             <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background to-background/0 pt-8 pb-4">
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
                     <ChatInput
-                        onSubmit={(query, isDeepResearch) => submitFollowUp(currentJob?.jobId || jobId, isDeepResearch, query)}
-                        isLoading={isSubmittingFollowUp}
-                        disabled={currentJob?.status !== 'done'}
+                        onSubmit={handleSubmit}
+                        isLoading={isSubmitting}
+                        disabled={job?.status !== 'active'}
                         placeholder="Ask a follow-up question..."
-                        defaultMode={(currentJob?.type === 'chat') ? 'chat' : 'research'}
+                        defaultMode={defaultMode}
                         hasOpenRouterKey={hasOpenRouterKey}
                         hasTavilyKey={hasTavilyKey}
                         isSignedIn={isSignedIn}

@@ -1,90 +1,224 @@
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
-import { JobStatus } from '../types';
+import { JobStatus, MessageStatus } from '../types';
 import { runPlanner } from '../controllers/plan';
 import { runSearcher } from '../controllers/search';
 import { runExtractor } from '../controllers/extract';
 import { runCompiler } from '../controllers/compile';
 import { dropCollection } from '../services/qdrant';
-import { Job, IJob } from '../models/Job';
+import { Job } from '../models/Job';
+import { Message } from '../models/Message';
 import { isDBConnected } from '../services/db';
 import { User } from '../models/User';
 import { decrypt } from '../services/crypto';
 
-import { complete } from '../services/llm';
-
 export const jobEmitter = new EventEmitter();
 
-// In-memory cache for active jobs (for quick access during processing)
-const activeJobs: Record<string, JobStatus> = {};
+const activeMessages: Record<string, MessageStatus> = {};
 
-export async function createJob(query: string, userId: string, parentJobId?: string, type: 'research' | 'chat' = 'research'): Promise<string> {
+export async function createJob(query: string, userId: string, type: 'research' | 'chat' = 'research'): Promise<string> {
     const jobId = uuidv4();
+    const userMessageId = uuidv4();
+    const assistantMessageId = uuidv4();
     const timestamp = Date.now();
-
-    const jobData: JobStatus = {
-        jobId,
-        userId,
-        query,
-        createdAt: timestamp,
-        status: 'planning',
-        parentJobId,
-        type,
-        data: {}
-    };
-
-    activeJobs[jobId] = jobData;
 
     if (isDBConnected()) {
         try {
             await Job.create({
                 jobId,
                 userId,
-                query,
+                title: query, 
                 createdAt: timestamp,
                 updatedAt: timestamp,
-                status: 'planning',
-                parentJobId,
-                type,
-                data: {}
+                status: 'active'
             });
         } catch (error) {
             console.error('Failed to persist job to MongoDB:', error);
         }
     }
 
-    processJob(jobId, query).catch(err => {
-        console.error(`Unhandled error in job ${jobId}:`, err);
-        updateJobStatus(jobId, 'error', { error: err.message || String(err) });
+    const userMessage: MessageStatus = {
+        messageId: userMessageId,
+        jobId,
+        role: 'user',
+        content: query,
+        type,
+        status: 'done',
+        data: {},
+        createdAt: timestamp
+    };
+
+    activeMessages[userMessageId] = userMessage;
+
+    const assistantMessage: MessageStatus = {
+        messageId: assistantMessageId,
+        jobId,
+        role: 'assistant',
+        content: '',
+        type,
+        status: 'planning',
+        data: {},
+        createdAt: timestamp + 1
+    };
+
+    activeMessages[assistantMessageId] = assistantMessage;
+
+    if (isDBConnected()) {
+        try {
+            await Message.create({
+                messageId: userMessageId,
+                jobId,
+                role: 'user',
+                content: query,
+                type,
+                status: 'done',
+                data: {},
+                createdAt: timestamp,
+                updatedAt: timestamp
+            });
+
+            await Message.create({
+                messageId: assistantMessageId,
+                jobId,
+                role: 'assistant',
+                content: '',
+                type,
+                status: 'planning',
+                data: {},
+                createdAt: timestamp + 1,
+                updatedAt: timestamp + 1
+            });
+        } catch (error) {
+            console.error('Failed to persist messages to MongoDB:', error);
+        }
+    }
+
+    processMessage(jobId, assistantMessageId, query, type).catch(err => {
+        console.error(`Unhandled error in message ${assistantMessageId}:`, err);
+        updateMessageStatus(assistantMessageId, 'error', { error: err.message || String(err) });
     });
 
     return jobId;
 }
 
-export async function getJob(id: string): Promise<JobStatus | null> {
-    if (activeJobs[id]) {
-        return activeJobs[id];
+export async function addMessage(jobId: string, content: string, type: 'research' | 'chat' = 'research'): Promise<string> {
+    const userMessageId = uuidv4();
+    const assistantMessageId = uuidv4();
+    const timestamp = Date.now();
+
+    const userMessage: MessageStatus = {
+        messageId: userMessageId,
+        jobId,
+        role: 'user',
+        content,
+        type,
+        status: 'done',
+        data: {},
+        createdAt: timestamp
+    };
+
+    activeMessages[userMessageId] = userMessage;
+
+    const assistantMessage: MessageStatus = {
+        messageId: assistantMessageId,
+        jobId,
+        role: 'assistant',
+        content: '',
+        type,
+        status: 'planning',
+        data: {},
+        createdAt: timestamp + 1
+    };
+
+    activeMessages[assistantMessageId] = assistantMessage;
+
+    if (isDBConnected()) {
+        try {
+            await Message.create({
+                messageId: userMessageId,
+                jobId,
+                role: 'user',
+                content,
+                type,
+                status: 'done',
+                data: {},
+                createdAt: timestamp,
+                updatedAt: timestamp
+            });
+
+            await Message.create({
+                messageId: assistantMessageId,
+                jobId,
+                role: 'assistant',
+                content: '',
+                type,
+                status: 'planning',
+                data: {},
+                createdAt: timestamp + 1,
+                updatedAt: timestamp + 1
+            });
+
+            await Job.updateOne({ jobId }, { updatedAt: timestamp });
+
+        } catch (error) {
+            console.error('Failed to persist messages to MongoDB:', error);
+        }
     }
+
+    processMessage(jobId, assistantMessageId, content, type).catch(err => {
+        console.error(`Unhandled error in message ${assistantMessageId}:`, err);
+        updateMessageStatus(assistantMessageId, 'error', { error: err.message || String(err) });
+    });
+
+    return assistantMessageId;
+}
+
+export async function getJob(id: string): Promise<{ job: JobStatus, messages: MessageStatus[] } | null> {
     if (isDBConnected()) {
         try {
             const job = await Job.findOne({ jobId: id }).lean();
-            if (job) {
-                return {
+            if (!job) return null;
+
+            const messages = await Message.find({ jobId: id }).sort({ createdAt: 1 }).lean();
+
+            const mergedMessages: any[] = messages.map(msg => {
+                if (activeMessages[msg.messageId]) {
+                    return { ...msg, ...activeMessages[msg.messageId] };
+                }
+                return msg;
+            });
+
+            Object.values(activeMessages).forEach(activeMsg => {
+                if (activeMsg.jobId === id && !mergedMessages.find(m => m.messageId === activeMsg.messageId)) {
+                    mergedMessages.push(activeMsg);
+                }
+            });
+
+            mergedMessages.sort((a, b) => a.createdAt - b.createdAt);
+
+            return {
+                job: {
                     jobId: job.jobId,
                     userId: job.userId,
-                    query: job.query,
+                    title: job.title,
                     createdAt: job.createdAt,
-                    status: job.status,
-                    parentJobId: job.parentJobId,
-                    type: job.type as 'research' | 'chat',
-                    data: job.data || {}
-                };
-            }
+                    status: job.status as 'active' | 'done' | 'error'
+                },
+                messages: mergedMessages.map(msg => ({
+                    messageId: msg.messageId,
+                    jobId: msg.jobId,
+                    role: msg.role as 'user' | 'assistant',
+                    content: msg.content,
+                    type: msg.type as 'research' | 'chat',
+                    status: msg.status as any,
+                    data: msg.data || {},
+                    createdAt: msg.createdAt
+                } as MessageStatus))
+            };
         } catch (error) {
             console.error('Failed to fetch job from MongoDB:', error);
         }
     }
-
     return null;
 }
 
@@ -99,68 +233,52 @@ export async function getJobs(userId: string): Promise<JobStatus[]> {
             return jobs.map(job => ({
                 jobId: job.jobId,
                 userId: job.userId,
-                query: job.query,
+                title: job.title,
                 createdAt: job.createdAt,
-                status: job.status,
-                parentJobId: job.parentJobId,
-                type: job.type as 'research' | 'chat',
-                data: job.data || {}
+                status: job.status as 'active' | 'done' | 'error'
             }));
         } catch (error) {
             console.error('Failed to fetch jobs from MongoDB:', error);
         }
     }
-
-    return Object.values(activeJobs).filter(job => job.userId === userId);
+    return [];
 }
 
-export async function getJobThread(jobId: string): Promise<JobStatus[]> {
-    const thread: JobStatus[] = [];
-    let currentJobId: string | undefined = jobId;
+async function updateMessageStatus(messageId: string, status: MessageStatus['status'], dataUpdate?: Partial<MessageStatus['data']>) {
+    const message = activeMessages[messageId];
+    if (!message) return;
 
-    while (currentJobId) {
-        const job: JobStatus | null = await getJob(currentJobId);
-        if (!job) break;
-
-        thread.unshift(job);
-        currentJobId = job.parentJobId;
-    }
-
-    return thread;
-}
-
-async function updateJobStatus(jobId: string, status: JobStatus['status'], dataUpdate?: Partial<JobStatus['data']>) {
-    const job = activeJobs[jobId];
-    if (!job) return;
-
-    job.status = status;
+    message.status = status;
     if (dataUpdate) {
-        job.data = { ...job.data, ...dataUpdate };
+        message.data = { ...message.data, ...dataUpdate };
     }
 
     if (isDBConnected()) {
         try {
-            await Job.updateOne(
-                { jobId },
+            await Message.updateOne(
+                { messageId },
                 {
                     $set: {
                         status,
-                        data: job.data,
+                        data: message.data,
                         updatedAt: Date.now()
                     }
                 }
             );
         } catch (error) {
-            console.error('Failed to update job in MongoDB:', error);
+            console.error('Failed to update message in MongoDB:', error);
         }
     }
 }
 
-async function processJob(jobId: string, query: string) {
-    const job = activeJobs[jobId];
-    if (!job) return;
+async function processMessage(jobId: string, messageId: string, query: string, type: 'research' | 'chat') {
+    const message = activeMessages[messageId];
+    if (!message) return;
 
     try {
+        const job = await Job.findOne({ jobId }).lean();
+        if (!job) throw new Error('Job not found');
+
         const user = await User.findOne({ userId: job.userId });
         if (!user || !user.encryptedOpenRouterKey) {
             throw new Error('MISSING_API_KEY: You must provide an OpenRouter API key in Settings to use this tool.');
@@ -173,21 +291,18 @@ async function processJob(jobId: string, query: string) {
         const openRouterApiKey = decrypt(user.encryptedOpenRouterKey);
         const tavilyApiKey = decrypt(user.encryptedTavilyKey);
 
-        if (job.type === 'chat') {
-            console.log(`[Job ${jobId}] Starting Chat...`);
-            await updateJobStatus(jobId, 'planning');
-            jobEmitter.emit('update', { jobId, status: 'planning', step: 'start' });
+        if (type === 'chat') {
+            console.log(`[Message ${messageId}] Starting Chat...`);
+            await updateMessageStatus(messageId, 'compiling');
+            jobEmitter.emit('update', { jobId, messageId, status: 'compiling', step: 'start' });
 
-            const thread = await getJobThread(jobId);
-            const contextJobs = thread.filter(j => j.jobId !== jobId);
+            const jobData = await getJob(jobId);
+            const previousMessages = jobData?.messages.filter(m => m.messageId !== messageId) || [];
 
-            const context = contextJobs.map(j => {
-                const role = j.userId === job.userId ? 'User' : 'Assistant';
-                let text = `User: ${j.query}\n`;
-                if (j.data.final?.detailed) {
-                    text += `Assistant: ${j.data.final.detailed}\n`;
-                } else if (j.data.final?.summary) {
-                    text += `Assistant: ${j.data.final.summary}\n`;
+            const context = previousMessages.map(msg => {
+                let text = `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
+                if (msg.role === 'assistant' && msg.data?.final?.detailed) {
+                    text += `(Detailed Report: ${msg.data.final.detailed})\n`;
                 }
                 return text;
             }).join('\n---\n');
@@ -201,82 +316,98 @@ Current User Question: ${query}
 
 Please answer the user's question based on the context and your general knowledge. Keep it concise and helpful.`;
 
-            const response = await complete({
+            const { streamComplete } = await import('../services/llm');
+            let accumulatedResponse = '';
+
+            for await (const chunk of streamComplete({
                 prompt,
                 apiKey: openRouterApiKey
-            });
+            })) {
+                accumulatedResponse += chunk;
+                jobEmitter.emit('update', {
+                    jobId,
+                    messageId,
+                    status: 'compiling',
+                    type: 'stream',
+                    chunk
+                });
+            }
 
             const finalResult = {
                 summary: '',
-                detailed: response,
+                detailed: accumulatedResponse,
                 citations: []
             };
 
-            job.data.final = finalResult;
-            await updateJobStatus(jobId, 'done', { final: finalResult });
-            jobEmitter.emit('update', { jobId, status: 'done', step: 'complete', data: job.data });
+            message.data.final = finalResult;
+            await updateMessageStatus(messageId, 'done', { final: finalResult });
+            jobEmitter.emit('update', { jobId, messageId, status: 'done', step: 'complete', data: message.data });
 
             setTimeout(() => {
-                delete activeJobs[jobId];
+                delete activeMessages[messageId];
             }, 60000);
             return;
         }
 
-        console.log(`[Job ${jobId}] Starting Planning...`);
-        await updateJobStatus(jobId, 'planning');
-        jobEmitter.emit('update', { jobId, status: 'planning', step: 'start' });
+        console.log(`[Message ${messageId}] Starting Planning...`);
+        await updateMessageStatus(messageId, 'planning');
+        jobEmitter.emit('update', { jobId, messageId, status: 'planning', step: 'start' });
 
         const plan = await runPlanner(query, openRouterApiKey);
-        job.data.plan = plan;
-        await updateJobStatus(jobId, 'planning', { plan });
-        jobEmitter.emit('update', { jobId, status: 'planning', step: 'complete', data: plan });
+        message.data.plan = plan;
+        await updateMessageStatus(messageId, 'planning', { plan });
+        jobEmitter.emit('update', { jobId, messageId, status: 'planning', step: 'complete', data: plan });
 
-        console.log(`[Job ${jobId}] Starting Search...`);
-        await updateJobStatus(jobId, 'searching');
-        jobEmitter.emit('update', { jobId, status: 'searching', step: 'start' });
+        console.log(`[Message ${messageId}] Starting Search...`);
+        await updateMessageStatus(messageId, 'searching');
+        jobEmitter.emit('update', { jobId, messageId, status: 'searching', step: 'start' });
 
-        const searchResult = await runSearcher(jobId, plan.search_queries, tavilyApiKey);
-        job.data.search = searchResult;
-        await updateJobStatus(jobId, 'searching', { search: searchResult });
-        jobEmitter.emit('update', { jobId, status: 'searching', step: 'complete', data: searchResult });
+        const searchResult = await runSearcher(messageId, plan.search_queries, tavilyApiKey);
+        message.data.search = searchResult;
+        await updateMessageStatus(messageId, 'searching', { search: searchResult });
+        jobEmitter.emit('update', { jobId, messageId, status: 'searching', step: 'complete', data: searchResult });
 
-        console.log(`[Job ${jobId}] Starting Extraction...`);
-        await updateJobStatus(jobId, 'extracting');
-        jobEmitter.emit('update', { jobId, status: 'extracting', step: 'start' });
+        console.log(`[Message ${messageId}] Starting Extraction...`);
+        await updateMessageStatus(messageId, 'extracting');
+        jobEmitter.emit('update', { jobId, messageId, status: 'extracting', step: 'start' });
 
         const extractionResult = await runExtractor(plan.sub_questions, searchResult.collectionName, openRouterApiKey);
-        job.data.extraction = extractionResult;
-        await updateJobStatus(jobId, 'extracting', { extraction: extractionResult });
-        jobEmitter.emit('update', { jobId, status: 'extracting', step: 'complete', data: extractionResult });
+        message.data.extraction = extractionResult;
+        await updateMessageStatus(messageId, 'extracting', { extraction: extractionResult });
+        jobEmitter.emit('update', { jobId, messageId, status: 'extracting', step: 'complete', data: extractionResult });
 
-        console.log(`[Job ${jobId}] Starting Compilation...`);
-        await updateJobStatus(jobId, 'compiling');
-        jobEmitter.emit('update', { jobId, status: 'compiling', step: 'start' });
+        console.log(`[Message ${messageId}] Starting Compilation...`);
+        await updateMessageStatus(messageId, 'compiling');
+        jobEmitter.emit('update', { jobId, messageId, status: 'compiling', step: 'start' });
 
-        const finalResult = await runCompiler(extractionResult, openRouterApiKey);
-        job.data.final = finalResult;
-        console.log('[Job] Final result stored:', {
-            jobId,
-            hasFinal: !!job.data.final,
-            hasSummary: !!job.data.final?.summary,
-            citationsCount: job.data.final?.citations?.length || 0
+        const { runCompilerStreaming } = await import('../controllers/compile');
+        const finalResult = await runCompilerStreaming(extractionResult, openRouterApiKey, (chunk: string) => {
+            jobEmitter.emit('update', {
+                jobId,
+                messageId,
+                status: 'compiling',
+                type: 'stream',
+                chunk
+            });
         });
-        await updateJobStatus(jobId, 'compiling', { final: finalResult });
-        jobEmitter.emit('update', { jobId, status: 'compiling', step: 'complete', data: finalResult });
+        message.data.final = finalResult;
 
-        console.log(`[Job ${jobId}] Done.`);
-        await updateJobStatus(jobId, 'done');
-        jobEmitter.emit('update', { jobId, status: 'done', step: 'complete', data: job.data });
+        await updateMessageStatus(messageId, 'compiling', { final: finalResult });
+        jobEmitter.emit('update', { jobId, messageId, status: 'compiling', step: 'complete', data: finalResult });
+
+        console.log(`[Message ${messageId}] Done.`);
+        await updateMessageStatus(messageId, 'done');
+        jobEmitter.emit('update', { jobId, messageId, status: 'done', step: 'complete', data: message.data });
 
         await dropCollection(searchResult.collectionName);
 
         setTimeout(() => {
-            delete activeJobs[jobId];
+            delete activeMessages[messageId];
         }, 60000);
     } catch (error: any) {
-        console.error(`[Job ${jobId}] Failed:`, error);
+        console.error(`[Message ${messageId}] Failed:`, error);
         const errorMessage = error.message || String(error);
-        await updateJobStatus(jobId, 'error', { error: errorMessage });
-        jobEmitter.emit('update', { jobId, status: 'error', error: errorMessage });
+        await updateMessageStatus(messageId, 'error', { error: errorMessage });
+        jobEmitter.emit('update', { jobId, messageId, status: 'error', error: errorMessage });
     }
 }

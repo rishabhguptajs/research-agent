@@ -119,7 +119,6 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
                 </DialogHeader>
 
                 <div className="grid gap-6 py-4">
-                    {/* OpenRouter Section */}
                     <div className="space-y-3 pb-4 border-b">
                         <div className="flex items-center justify-between">
                             <h3 className="text-sm font-semibold">OpenRouter API Key</h3>
@@ -161,7 +160,6 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
                         </div>
                     </div>
 
-                    {/* Tavily Section */}
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
                             <h3 className="text-sm font-semibold">Tavily API Key</h3>

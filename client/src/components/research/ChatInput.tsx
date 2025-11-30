@@ -63,7 +63,6 @@ export default function ChatInput({
                     />
 
                     <div className="flex items-center justify-between mt-3 px-1">
-                        {/* Left: Mode Toggle (Segmented Control) */}
                         <div className="flex items-center bg-muted/50 rounded-full p-1 border border-border/50">
                             <button
                                 type="button"
@@ -92,7 +91,6 @@ export default function ChatInput({
                             </button>
                         </div>
 
-                        {/* Right: Send Button */}
                         <Button
                             type="submit"
                             disabled={isLoading || !query.trim() || disabled || showValidationOverlay}
@@ -109,8 +107,7 @@ export default function ChatInput({
                             )}
                         </Button>
                     </div>
-
-                    {/* Validation Overlay */}
+                            
                     {showValidationOverlay && (
                         <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-[2px] flex items-center justify-center rounded-xl">
                             <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 flex items-center gap-3 max-w-[90%] mx-auto">

@@ -34,11 +34,14 @@ export function useResearchForm() {
                 query: query.trim(),
                 type
             });
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Failed to start research:", error);
-            if (error.response?.status === 403) {
-                alert("Please configure your API key in the dashboard first");
-                router.push("/dashboard");
+            if (error && typeof error === 'object' && 'response' in error) {
+                const err = error as { response: { status: number } };
+                if (err.response?.status === 403) {
+                    alert("Please configure your API key in the dashboard first");
+                    router.push("/dashboard");
+                }
             }
         }
     };

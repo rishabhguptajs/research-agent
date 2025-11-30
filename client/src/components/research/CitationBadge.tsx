@@ -31,10 +31,9 @@ export function CitationBadge({ citationNumber, citation, index }: CitationBadge
                     {new URL(citation.source).hostname}
                 </span>
                 <span className="text-xs text-zinc-300 line-clamp-3 leading-relaxed" style={{ display: 'block' }}>
-                    "{citation.snippet}"
+                    &quot;{citation.snippet}&quot;
                 </span>
                 <ExternalLink className="w-3 h-3 absolute top-3 right-3 text-amber-500/50" />
-                {/* Arrow pointer */}
                 <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-px" style={{ display: 'block' }}>
                     <span className="border-8 border-transparent border-t-zinc-900" style={{ filter: 'drop-shadow(0 1px 0 rgba(245, 158, 11, 0.3))', display: 'block' }}></span>
                 </span>
