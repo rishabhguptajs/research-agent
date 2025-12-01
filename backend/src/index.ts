@@ -5,6 +5,8 @@ import { clerkMiddleware, requireAuth } from './middleware/auth';
 import { connectDB } from './services/db';
 import userRoutes from './routes/user.routes';
 import jobRoutes from './routes/job.routes';
+import uploadRoutes from './routes/upload.routes';
+import { documentsRoutes } from './routes/documents.routes';
 
 dotenv.config();
 
@@ -48,6 +50,8 @@ app.get('/health', (req, res) => {
 app.use('/user', requireAuth(), userRoutes);
 app.use('/job', requireAuth(), jobRoutes);
 app.use('/jobs', requireAuth(), jobRoutes);
+app.use('/upload', requireAuth(), uploadRoutes);
+app.use('/documents', requireAuth(), documentsRoutes);
 
 async function startServer() {
     try {
