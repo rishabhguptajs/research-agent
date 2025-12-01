@@ -1,9 +1,9 @@
 import api from "@/lib/api";
 
-export const createJob = async (token: string, query: string, parentJobId?: string, type?: string) => {
+export const createJob = async (token: string, query: string, parentJobId?: string, type?: string, depth?: 'standard' | 'deep') => {
     const response = await api.post(
         "/job",
-        { query, parentJobId, type },
+        { query, parentJobId, type, depth },
         {
             headers: {
                 Authorization: `Bearer ${token}`,
