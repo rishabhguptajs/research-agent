@@ -6,7 +6,9 @@ export interface IJob extends Document {
     title: string;
     createdAt: number;
     updatedAt: number;
-    status: 'active' | 'done' | 'error'; 
+    status: 'active' | 'done' | 'error';
+    depth?: 'standard' | 'deep';
+    attachedDocuments?: string[];
 }
 
 const JobSchema = new Schema<IJob>({
@@ -20,7 +22,13 @@ const JobSchema = new Schema<IJob>({
         required: true,
         enum: ['active', 'done', 'error'],
         default: 'active'
-    }
+    },
+    depth: {
+        type: String,
+        enum: ['standard', 'deep'],
+        default: 'standard'
+    },
+    attachedDocuments: [{ type: String }]
 }, {
     timestamps: false
 });
