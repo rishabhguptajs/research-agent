@@ -26,6 +26,25 @@ INSTRUCTIONS:
    
 3. In the citations array, list each source matching the [N] numbers used in the text
 
+4. EXTRACT DATA FOR CHARTS:
+   - Identify any statistical data suitable for visualization (trends, comparisons, distributions).
+   - Generate a "charts" array in the JSON output.
+   - Each chart object must have:
+     - type: "bar", "line", "pie", or "area"
+     - title: Descriptive title
+     - xKey: Key for X-axis (e.g., "year", "category")
+     - yKeys: Array of keys for Y-axis (e.g., ["revenue", "profit"])
+     - data: Array of objects with xKey and yKeys
+     - description: Brief explanation of the chart
+   - Example:
+     {
+       "type": "bar",
+       "title": "Market Growth 2020-2024",
+       "xKey": "year",
+       "yKeys": ["value"],
+       "data": [{ "year": "2020", "value": 100 }, { "year": "2024", "value": 150 }]
+     }
+
 REMEMBER: If you write a sentence without inline [N] citations, you are doing it WRONG. Citations must appear THROUGHOUT the detailed text, not at the end.
 `;
 

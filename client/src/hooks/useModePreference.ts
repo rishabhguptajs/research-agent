@@ -6,7 +6,7 @@ export type ResearchMode = 'chat' | 'research';
 
 const STORAGE_KEY = 'research-mode-preference';
 
-export function useModePreference(defaultMode: ResearchMode = 'research') {
+export function useModePreference(defaultMode: ResearchMode = 'chat') {
     const [mode, setModeState] = useState<ResearchMode>(defaultMode);
     const [isInitialized, setIsInitialized] = useState(false);
 

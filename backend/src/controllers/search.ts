@@ -3,10 +3,12 @@ import { chunkText } from '../services/chunk';
 import { createCollection, upsertChunks } from '../services/qdrant';
 import { SearchResult, Chunk } from '../types';
 
-export async function runSearcher(jobId: string, searchQueries: string[], tavilyApiKey: string): Promise<SearchResult> {
-    const collectionName = `job_${jobId}`;
+export async function runSearcher(jobId: string, searchQueries: string[], tavilyApiKey: string, existingCollectionName?: string): Promise<SearchResult> {
+    const collectionName = existingCollectionName || `job_${jobId}`;
 
-    await createCollection(collectionName);
+    if (!existingCollectionName) {
+        await createCollection(collectionName);
+    }
 
     const allChunks: Chunk[] = [];
 

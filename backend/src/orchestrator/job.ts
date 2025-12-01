@@ -8,15 +8,55 @@ import { runCompiler } from '../controllers/compile';
 import { dropCollection } from '../services/qdrant';
 import { Job } from '../models/Job';
 import { Message } from '../models/Message';
+import { DocumentModel } from '../models/Document';
 import { isDBConnected } from '../services/db';
 import { User } from '../models/User';
 import { decrypt } from '../services/crypto';
+import { searchSimilar } from '../services/qdrant';
 
 export const jobEmitter = new EventEmitter();
 
 const activeMessages: Record<string, MessageStatus> = {};
 
-export async function createJob(query: string, userId: string, type: 'research' | 'chat' = 'research'): Promise<string> {
+async function getAttachedDocumentChunks(jobId: string, userId: string): Promise<Array<{ id: string; text: string; source: string; title?: string }>> {
+    const job = await Job.findOne({ jobId }).lean();
+    if (!job || !job.attachedDocuments || job.attachedDocuments.length === 0) {
+        return [];
+    }
+
+    // Get all attached documents
+    const documents = await DocumentModel.find({
+        documentId: { $in: job.attachedDocuments },
+        userId
+    }).lean();
+
+    if (documents.length === 0) {
+        return [];
+    }
+
+    const allChunks: Array<{ id: string; text: string; source: string; title?: string }> = [];
+
+    for (const doc of documents) {
+        try {
+            const chunks = await searchSimilar(doc.collectionName, Array(768).fill(0), Math.min(doc.totalChunks, 50));
+
+            chunks.forEach(chunk => {
+                allChunks.push({
+                    id: chunk.id as string,
+                    text: (chunk.payload as any)?.text || '',
+                    source: (chunk.payload as any)?.source || doc.fileName,
+                    title: doc.fileName
+                });
+            });
+        } catch (error) {
+            console.error(`Error retrieving chunks for document ${doc.documentId}:`, error);
+        }
+    }
+
+    return allChunks;
+}
+
+export async function createJob(query: string, userId: string, type: 'research' | 'chat' = 'research', depth: 'standard' | 'deep' = 'standard'): Promise<string> {
     const jobId = uuidv4();
     const userMessageId = uuidv4();
     const assistantMessageId = uuidv4();
@@ -27,10 +67,11 @@ export async function createJob(query: string, userId: string, type: 'research' 
             await Job.create({
                 jobId,
                 userId,
-                title: query, 
+                title: query,
                 createdAt: timestamp,
                 updatedAt: timestamp,
-                status: 'active'
+                status: 'active',
+                depth
             });
         } catch (error) {
             console.error('Failed to persist job to MongoDB:', error);
@@ -45,6 +86,7 @@ export async function createJob(query: string, userId: string, type: 'research' 
         type,
         status: 'done',
         data: {},
+        attachedChunks: [],
         createdAt: timestamp
     };
 
@@ -58,6 +100,7 @@ export async function createJob(query: string, userId: string, type: 'research' 
         type,
         status: 'planning',
         data: {},
+        attachedChunks: [],
         createdAt: timestamp + 1
     };
 
@@ -73,6 +116,7 @@ export async function createJob(query: string, userId: string, type: 'research' 
                 type,
                 status: 'done',
                 data: {},
+                attachedChunks: [],
                 createdAt: timestamp,
                 updatedAt: timestamp
             });
@@ -85,6 +129,7 @@ export async function createJob(query: string, userId: string, type: 'research' 
                 type,
                 status: 'planning',
                 data: {},
+                attachedChunks: [],
                 createdAt: timestamp + 1,
                 updatedAt: timestamp + 1
             });
@@ -93,7 +138,7 @@ export async function createJob(query: string, userId: string, type: 'research' 
         }
     }
 
-    processMessage(jobId, assistantMessageId, query, type).catch(err => {
+    processMessage(jobId, assistantMessageId, query, type, depth).catch(err => {
         console.error(`Unhandled error in message ${assistantMessageId}:`, err);
         updateMessageStatus(assistantMessageId, 'error', { error: err.message || String(err) });
     });
@@ -114,6 +159,7 @@ export async function addMessage(jobId: string, content: string, type: 'research
         type,
         status: 'done',
         data: {},
+        attachedChunks: [],
         createdAt: timestamp
     };
 
@@ -127,6 +173,7 @@ export async function addMessage(jobId: string, content: string, type: 'research
         type,
         status: 'planning',
         data: {},
+        attachedChunks: [],
         createdAt: timestamp + 1
     };
 
@@ -142,6 +189,7 @@ export async function addMessage(jobId: string, content: string, type: 'research
                 type,
                 status: 'done',
                 data: {},
+                attachedChunks: [],
                 createdAt: timestamp,
                 updatedAt: timestamp
             });
@@ -154,6 +202,7 @@ export async function addMessage(jobId: string, content: string, type: 'research
                 type,
                 status: 'planning',
                 data: {},
+                attachedChunks: [],
                 createdAt: timestamp + 1,
                 updatedAt: timestamp + 1
             });
@@ -271,7 +320,7 @@ async function updateMessageStatus(messageId: string, status: MessageStatus['sta
     }
 }
 
-async function processMessage(jobId: string, messageId: string, query: string, type: 'research' | 'chat') {
+async function processMessage(jobId: string, messageId: string, query: string, type: 'research' | 'chat', depth: 'standard' | 'deep' = 'standard') {
     const message = activeMessages[messageId];
     if (!message) return;
 
@@ -288,8 +337,15 @@ async function processMessage(jobId: string, messageId: string, query: string, t
             throw new Error('MISSING_API_KEY: You must provide a Tavily API key in Settings to use this tool.');
         }
 
-        const openRouterApiKey = decrypt(user.encryptedOpenRouterKey);
-        const tavilyApiKey = decrypt(user.encryptedTavilyKey);
+        let openRouterApiKey: string;
+        let tavilyApiKey: string;
+
+        try {
+            openRouterApiKey = decrypt(user.encryptedOpenRouterKey);
+            tavilyApiKey = decrypt(user.encryptedTavilyKey);
+        } catch (error) {
+            throw new Error('INVALID_API_KEY: Your API keys are invalid or corrupted. Please update them in Settings.');
+        }
 
         if (type === 'chat') {
             console.log(`[Message ${messageId}] Starting Chat...`);
@@ -298,6 +354,17 @@ async function processMessage(jobId: string, messageId: string, query: string, t
 
             const jobData = await getJob(jobId);
             const previousMessages = jobData?.messages.filter(m => m.messageId !== messageId) || [];
+
+            const attachedChunks = await getAttachedDocumentChunks(jobId, job.userId);
+            const attachedChunkIds = attachedChunks.map(chunk => chunk.id);
+
+            message.attachedChunks = attachedChunkIds;
+
+            const documentContext = attachedChunks.length > 0
+                ? `\nAttached Documents:\n${attachedChunks.map(chunk =>
+                    `From ${chunk.title || 'Document'}: ${chunk.text.substring(0, 500)}${chunk.text.length > 500 ? '...' : ''}`
+                  ).join('\n\n')}\n\n`
+                : '';
 
             const context = previousMessages.map(msg => {
                 let text = `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
@@ -308,13 +375,13 @@ async function processMessage(jobId: string, messageId: string, query: string, t
             }).join('\n---\n');
 
             const prompt = `You are a helpful research assistant.
-            
-Previous conversation context:
+
+${documentContext}Previous conversation context:
 ${context}
 
 Current User Question: ${query}
 
-Please answer the user's question based on the context and your general knowledge. Keep it concise and helpful.`;
+Please answer the user's question based on the attached documents (if any), conversation context, and your general knowledge. Keep it concise and helpful.`;
 
             const { streamComplete } = await import('../services/llm');
             let accumulatedResponse = '';
@@ -340,7 +407,7 @@ Please answer the user's question based on the context and your general knowledg
             };
 
             message.data.final = finalResult;
-            await updateMessageStatus(messageId, 'done', { final: finalResult });
+            await updateMessageStatus(messageId, 'done', { final: finalResult, attachedChunks: message.attachedChunks });
             jobEmitter.emit('update', { jobId, messageId, status: 'done', step: 'complete', data: message.data });
 
             setTimeout(() => {
@@ -371,10 +438,64 @@ Please answer the user's question based on the context and your general knowledg
         await updateMessageStatus(messageId, 'extracting');
         jobEmitter.emit('update', { jobId, messageId, status: 'extracting', step: 'start' });
 
-        const extractionResult = await runExtractor(plan.sub_questions, searchResult.collectionName, openRouterApiKey);
+        let extractionResult = await runExtractor(plan.sub_questions, searchResult.collectionName, openRouterApiKey, `kb_${job.userId}`);
         message.data.extraction = extractionResult;
         await updateMessageStatus(messageId, 'extracting', { extraction: extractionResult });
         jobEmitter.emit('update', { jobId, messageId, status: 'extracting', step: 'complete', data: extractionResult });
+
+        // --- DEEP RESEARCH LOGIC ---
+        if (job.depth === 'deep') {
+            console.log(`[Message ${messageId}] Deep Research: Analyzing gaps...`);
+            jobEmitter.emit('update', { jobId, messageId, status: 'planning', step: 'gap_analysis' });
+
+            const { GAP_ANALYZER_PROMPT, GAP_ANALYZER_SYSTEM } = await import('../prompts/gap_analyzer');
+            const { generateJSON } = await import('../services/llm');
+
+            try {
+                const gapAnalysis = await generateJSON<{ gaps: string[], new_search_queries: string[] }>({
+                    prompt: GAP_ANALYZER_PROMPT(query, extractionResult.facts),
+                    system: GAP_ANALYZER_SYSTEM,
+                    apiKey: openRouterApiKey
+                });
+
+                if (gapAnalysis.new_search_queries && gapAnalysis.new_search_queries.length > 0) {
+                    console.log(`[Message ${messageId}] Deep Research: Found gaps. Starting recursive search...`);
+                    console.log(`[Message ${messageId}] New Queries:`, gapAnalysis.new_search_queries);
+
+                    jobEmitter.emit('update', {
+                        jobId,
+                        messageId,
+                        status: 'searching',
+                        step: 'deep_search',
+                        data: { queries: gapAnalysis.new_search_queries }
+                    });
+
+                    const deepSearchResult = await runSearcher(messageId, gapAnalysis.new_search_queries, tavilyApiKey, searchResult.collectionName); // Append to same collection
+
+                    console.log(`[Message ${messageId}] Deep Research: Extracting new findings...`);
+                    jobEmitter.emit('update', { jobId, messageId, status: 'extracting', step: 'deep_extract' });
+
+                    const deepExtractionResult = await runExtractor(
+                        [...plan.sub_questions, ...gapAnalysis.gaps],
+                        searchResult.collectionName,
+                        openRouterApiKey,
+                        `kb_${job.userId}`
+                    );
+
+                    extractionResult = {
+                        facts: [...extractionResult.facts, ...deepExtractionResult.facts]
+                    };
+
+                    message.data.extraction = extractionResult;
+                    await updateMessageStatus(messageId, 'extracting', { extraction: extractionResult });
+                    jobEmitter.emit('update', { jobId, messageId, status: 'extracting', step: 'complete', data: extractionResult });
+                } else {
+                    console.log(`[Message ${messageId}] Deep Research: No significant gaps found.`);
+                }
+            } catch (error) {
+                console.error(`[Message ${messageId}] Deep Research Error:`, error);
+            }
+        }
 
         console.log(`[Message ${messageId}] Starting Compilation...`);
         await updateMessageStatus(messageId, 'compiling');

@@ -7,6 +7,7 @@ export interface IMessage extends Document {
     content: string;
     type?: 'research' | 'chat';
     status?: 'planning' | 'searching' | 'extracting' | 'compiling' | 'done' | 'error';
+    attachedChunks?: string[];
     data?: {
         plan?: {
             sub_questions: string[];
@@ -35,6 +36,15 @@ export interface IMessage extends Document {
                 source: string;
                 snippet: string;
             }>;
+            charts?: Array<{
+                type: 'bar' | 'line' | 'pie' | 'area';
+                title: string;
+                data: any[];
+                xKey: string;
+                yKeys: string[];
+                colors?: string[];
+                description?: string;
+            }>;
         };
         error?: string;
     };
@@ -52,6 +62,7 @@ const MessageSchema = new Schema<IMessage>({
         type: String,
         enum: ['planning', 'searching', 'extracting', 'compiling', 'done', 'error'],
     },
+    attachedChunks: [{ type: String }], // Array of chunk IDs from attached documents for context
     data: {
         type: Schema.Types.Mixed,
         default: {}

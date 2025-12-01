@@ -4,6 +4,7 @@ import { JobData } from "@/types";
 import SourcesModal from './SourcesModal';
 import { useMobile } from "@/hooks/use-mobile";
 import { CitationBadge } from './CitationBadge';
+import ChartRenderer from './ChartRenderer';
 
 export default function ReportView({ data }: { data: JobData['final'] }) {
     const isMobile = useMobile();
@@ -99,6 +100,14 @@ export default function ReportView({ data }: { data: JobData['final'] }) {
                     <div className={`leading-7 text-foreground/90 ${isMobile ? 'text-sm' : 'text-base'}`}>
                         {processTextWithCitations(data.summary)}
                     </div>
+                </div>
+            )}
+
+            {data.charts && data.charts.length > 0 && (
+                <div className="mb-8 grid grid-cols-1 gap-6">
+                    {data.charts.map((chart, index) => (
+                        <ChartRenderer key={`chart-${index}`} chart={chart} />
+                    ))}
                 </div>
             )}
 
