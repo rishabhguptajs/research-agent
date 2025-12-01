@@ -6,6 +6,7 @@ import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ReactQueryProvider } from "@/providers/react-query-provider";
+import { Toaster } from "react-hot-toast";
 
 export const metadata: Metadata = {
   title: "Research Agent",
@@ -39,6 +40,13 @@ export default function RootLayout({
         >
           <ReactQueryProvider>
             {children}
+            <Toaster position="bottom-right" toastOptions={{
+              style: {
+                background: '#1e1e1e',
+                color: '#fff',
+                border: '1px solid #333',
+              },
+            }} />
           </ReactQueryProvider>
         </body>
       </html>

@@ -6,7 +6,7 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import { useJobStream } from "@/hooks/useJobStream";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, XCircle } from "lucide-react";
+import { ArrowLeft, XCircle, Paperclip } from "lucide-react";
 import { exportJobToPdf, getJobPdfBlobUrl } from "@/utils/pdf-export";
 import { JobMessage } from "@/components/research/JobMessage";
 import ChatInput from "@/components/research/ChatInput";
@@ -14,6 +14,8 @@ import { useResearchForm } from "@/hooks/useResearchForm";
 import { Modal } from "@/components/ui/Modal";
 import { sendMessage } from "@/services/job.service";
 import { Loader } from "@/components/ui/Loader";
+import DocumentAttachmentPanel from "@/components/research/DocumentAttachmentPanel";
+import { useDocuments } from "@/hooks/useDocuments";
 
 export default function JobPage() {
     const params = useParams();
@@ -25,10 +27,12 @@ export default function JobPage() {
     const bottomRef = useRef<HTMLDivElement>(null);
 
     const { hasOpenRouterKey, hasTavilyKey, checkingKey, isSignedIn } = useResearchForm();
+    const { refreshDocuments } = useDocuments();
 
     const [showExportConfirm, setShowExportConfirm] = useState(false);
     const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showDocumentPanel, setShowDocumentPanel] = useState(false);
 
     useEffect(() => {
         if (bottomRef.current) {
@@ -113,6 +117,16 @@ export default function JobPage() {
                             <Button
                                 variant="outline"
                                 size="sm"
+                                onClick={() => setShowDocumentPanel(true)}
+                                disabled={!job || job.status !== 'active'}
+                                className="hover:bg-blue-500/10 cursor-pointer hover:border-blue-500/40 hover:text-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Paperclip className="w-4 h-4 mr-2" />
+                                Attach Docs
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
                                 onClick={handleExportPDF}
                                 disabled={!job || messages.length === 0 || job.status !== 'active'}
                                 className="hover:bg-amber-500/10 cursor-pointer hover:border-amber-500/40 hover:text-amber-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -170,6 +184,8 @@ export default function JobPage() {
                         hasTavilyKey={hasTavilyKey}
                         isSignedIn={isSignedIn}
                         checkingKey={checkingKey}
+                        onDocumentUpload={refreshDocuments}
+                        jobId={jobId}
                     />
                 </div>
             </div>
@@ -201,6 +217,12 @@ export default function JobPage() {
                     </div>
                 )}
             </Modal>
+
+            <DocumentAttachmentPanel
+                jobId={jobId}
+                isOpen={showDocumentPanel}
+                onClose={() => setShowDocumentPanel(false)}
+            />
         </div>
     );
 }
