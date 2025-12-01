@@ -12,10 +12,10 @@ export function useCreateJob() {
     const router = useRouter();
 
     return useMutation({
-        mutationFn: async ({ query, parentJobId, type }: { query: string; parentJobId?: string; type?: string }) => {
+        mutationFn: async ({ query, parentJobId, type, depth }: { query: string; parentJobId?: string; type?: string; depth?: 'standard' | 'deep' }) => {
             const token = await getToken();
             if (!token) throw new Error('Not authenticated');
-            return createJob(token, query, parentJobId, type);
+            return createJob(token, query, parentJobId, type, depth);
         },
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: queryKeys.jobs.list() });

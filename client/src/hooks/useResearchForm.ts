@@ -14,7 +14,7 @@ export function useResearchForm() {
     const hasTavilyKey = apiKeys?.hasTavilyKey ?? false;
     const isLoading = createJobMutation.isPending;
 
-    const submitResearch = async (e?: React.FormEvent, type: 'research' | 'chat' = 'research', query?: string) => {
+    const submitResearch = async (e?: React.FormEvent, type: 'research' | 'chat' = 'research', query?: string, depth: 'standard' | 'deep' = 'standard') => {
         if (e) e.preventDefault();
 
         if (!query || !query.trim()) return;
@@ -32,7 +32,8 @@ export function useResearchForm() {
         try {
             await createJobMutation.mutateAsync({
                 query: query.trim(),
-                type
+                type,
+                depth
             });
         } catch (error: unknown) {
             console.error("Failed to start research:", error);
