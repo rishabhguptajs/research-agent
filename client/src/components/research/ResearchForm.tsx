@@ -16,8 +16,8 @@ export default function ResearchForm() {
 
     const isMobile = useMobile();
 
-    const handleSubmit = (query: string, isDeepResearch: boolean) => {
-        submitResearch(undefined, isDeepResearch ? 'research' : 'chat', query);
+    const handleSubmit = (query: string, isResearchMode: boolean, depth: 'standard' | 'deep') => {
+        submitResearch(undefined, isResearchMode ? 'research' : 'chat', query, depth);
     };
 
     const isDisabled = checkingKey;
@@ -29,7 +29,7 @@ export default function ResearchForm() {
                 isLoading={isLoading}
                 disabled={isDisabled}
                 autoFocus
-                defaultMode="research"
+                defaultMode="chat"
                 hasOpenRouterKey={hasOpenRouterKey}
                 hasTavilyKey={hasTavilyKey}
                 isSignedIn={isSignedIn}
