@@ -20,6 +20,7 @@ export interface MessageStatus {
     content: string;
     type?: 'research' | 'chat';
     status?: 'planning' | 'searching' | 'extracting' | 'compiling' | 'done' | 'error';
+    attachedChunks?: string[];
     data: JobData;
     createdAt: number;
 }
@@ -29,6 +30,7 @@ export interface JobData {
     search?: SearchResult;
     extraction?: ExtractionResult;
     final?: CompileResult;
+    attachedChunks?: string[];
     error?: string;
 }
 
@@ -66,6 +68,17 @@ export interface CompileResult {
     summary: string;
     detailed: string;
     citations: Citation[];
+    charts?: ChartData[];
+}
+
+export interface ChartData {
+    type: 'bar' | 'line' | 'pie' | 'area';
+    title: string;
+    data: any[];
+    xKey: string;
+    yKeys: string[];
+    colors?: string[];
+    description?: string;
 }
 
 export interface Citation {
